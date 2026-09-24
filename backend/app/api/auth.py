@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core import security
 from app.models.user import User
-from app.schemas.user import UserCreate, UserResponse, Token
+from app.schemas.user import UserCreate, UserResponse, Token, ChangePassword
 from datetime import datetime, timezone
 
 router = APIRouter()
@@ -37,6 +37,10 @@ def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db: 
     if user is None or not user.is_active:
         raise credentials_exception
     return user
+
+@router.get("/me", response_model=UserResponse)
+def get_me(current_user: User = Depends(get_current_user)):
+    return current_user
 
 @router.post("/register", response_model=UserResponse)
 def register(user_in: UserCreate, db: Session = Depends(get_db)):
@@ -77,4 +81,17 @@ def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), 
 def logout(response: Response):
     response.delete_cookie("access_token")
     return {"message": "Logged out successfully"}
+
+@router.post("/change-password")
+def change_password(
+    data: ChangePassword,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not security.verify_password(data.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect current password")
+    
+    current_user.hashed_password = security.get_password_hash(data.new_password)
+    db.commit()
+    return {"message": "Password changed successfully"}
 

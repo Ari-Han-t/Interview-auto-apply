@@ -11,6 +11,10 @@ if os.path.exists(env_path):
 
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
+
+# Ensure stdout can print unicode on Windows
+sys.stdout.reconfigure(encoding='utf-8')
+
 from app.services.ai.matcher import analyze_job_match
 from app.services.ai.generator import generate_tailored_resume
 
@@ -32,6 +36,35 @@ print("--- Testing analyze_job_match ---")
 match_result = analyze_job_match(profile_text, job_description)
 print(match_result)
 
-print("\n--- Testing generate_tailored_resume ---")
+print("\n--- Testing generate_tailored_resume (Markdown) ---")
 resume_result = generate_tailored_resume(profile_text, job_description, "Full Stack Software Engineer")
-print(resume_result)
+print(resume_result[:200] + "...\n")
+
+dummy_latex = r"""
+\documentclass{article}
+\begin{document}
+\section{Projects}
+\begin{itemize}
+    \item Old Project 1
+\end{itemize}
+\end{document}
+"""
+
+dummy_extracted = [
+    {
+        "name": "Super AI App",
+        "demo_link": "https://super-ai-app.com",
+        "tech_stack": ["Python", "FastAPI"],
+        "relevance_reason": "Directly matches Python and FastAPI requirements."
+    }
+]
+
+print("--- Testing generate_tailored_resume (LaTeX) ---")
+latex_result = generate_tailored_resume(
+    dummy_latex, 
+    job_description, 
+    "Full Stack Software Engineer", 
+    is_latex=True, 
+    extracted_projects=dummy_extracted
+)
+print(latex_result)

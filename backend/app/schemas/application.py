@@ -12,6 +12,7 @@ class ApplicationResponse(ApplicationBase):
     resume_version_url: Optional[str] = None
     cover_letter_url: Optional[str] = None
     next_action: Optional[str] = None
+    user_instructions: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -21,3 +22,9 @@ class GenerationResponse(BaseModel):
     status: str
     resume_preview: str
     cover_letter_preview: str
+
+class ApplicationWithJobResponse(ApplicationResponse):
+    company: str
+    role: str
+    job_url: str
+

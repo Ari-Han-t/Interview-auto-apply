@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, Text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from .base import Base
@@ -17,6 +17,12 @@ class Application(Base):
     cover_letter_url = Column(String, nullable=True)
     
     next_action = Column(String, nullable=True)
+    user_instructions = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    analysis_progress = Column(JSON, nullable=True, default=dict)
+    analysis_results = Column(JSON, nullable=True, default=dict)
 
     job = relationship("Job", back_populates="applications")
     user = relationship("User")
+    history = relationship("ApplicationHistory", back_populates="application", cascade="all, delete-orphan")

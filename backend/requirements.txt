@@ -13,3 +13,5 @@ python-multipart
 playwright
 openai
 reportlab
+pdfminer.six
+python-docx

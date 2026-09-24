@@ -1,71 +1,76 @@
-import os
-import json
 import logging
-from openai import OpenAI
+import json
+from app.services.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
-client = None
-api_key = os.getenv("GROQ_API_KEY")
-if api_key:
-    client = OpenAI(
-        base_url="https://api.groq.com/openai/v1",
-        api_key=api_key,
+def analyze_job_match(
+    profile_text: str, 
+    job_description: str,
+    projects_meta: list = None,
+    latex_resume: str = None,
+    job_metadata: dict = None
+) -> dict:
+    """
+    Analyzes a job description and scraped metadata against a user's unified profile,
+    project metadata, and raw LaTeX resume content to determine matching overlap.
+    """
+    provider = get_llm()
+
+    system_prompt = (
+        "You are an expert technical recruiter and resume builder. Analyze the job description and "
+        "extracted job requirements against the candidate's text profile, project metadata (including tech stacks and links), "
+        "and their master LaTeX resume format/template.\n\n"
+        "Calculate the following dimensions of overlap:\n"
+        "1. Resume similarity: Overall content, tone, and experience alignment.\n"
+        "2. Skill overlap: Matching technical skills, libraries, and frameworks.\n"
+        "3. GitHub/Projects overlap: Alignment of the candidate's projects, technologies, and GitHub descriptions with the job.\n"
+        "4. Keyword overlap: Matching key terms and technologies.\n\n"
+        "Assess if the projects or LaTeX resume content can be tailored effectively for the role.\n"
+        "Respond ONLY in pure JSON format without markdown wrapping.\n"
+        "Schema:\n"
+        "{\n"
+        "  \"match_percentage\": int,\n"
+        "  \"resume_similarity\": int,\n"
+        "  \"skill_overlap\": int,\n"
+        "  \"github_overlap\": int,\n"
+        "  \"keyword_overlap\": int,\n"
+        "  \"missing_skills\": [\"str\"],\n"
+        "  \"strengths\": [\"str\"],\n"
+        "  \"weaknesses\": [\"str\"],\n"
+        "  \"reasoning\": \"str\"\n"
+        "}"
     )
 
-def analyze_job_match(profile_text: str, job_description: str) -> dict:
-    """
-    Analyzes a job description against a user's profile to determine match percentage,
-    strengths, weaknesses, and missing keywords.
-    """
-    if not client:
-        logger.warning("GROQ_API_KEY not set. Falling back to mock data.")
-        import random
-        match_percentage = random.randint(40, 95)
-        missing_keywords = ["Python"] if "python" in job_description.lower() and "python" not in profile_text.lower() else []
-        return {
-            "match_percentage": match_percentage,
-            "strengths": ["Strong educational background", "Relevant internship experience"],
-            "weaknesses": ["Lacks production experience in some listed frameworks"],
-            "missing_keywords": missing_keywords or ["Docker", "Kubernetes", "AWS"],
-            "likelihood": "High" if match_percentage > 75 else "Medium"
-        }
-
-    import time
+    user_prompt_parts = []
+    user_prompt_parts.append(f"Candidate Profile Description:\n{profile_text}")
     
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = client.chat.completions.create(
-                model="llama-3.1-8b-instant", # Or any model preferred by the user
-                messages=[
-                    {"role": "system", "content": "You are an expert technical recruiter. Analyze the job description against the user's profile. Respond ONLY in pure JSON format without markdown wrapping. Schema: { 'match_percentage': int, 'strengths': [str], 'weaknesses': [str], 'missing_keywords': [str], 'likelihood': str }"},
-                    {"role": "user", "content": f"Profile:\n{profile_text}\n\nJob Description:\n{job_description}"}
-                ]
-            )
-            content = response.choices[0].message.content.strip()
-            
-            # Strip potential markdown formatting if the model disobeys
-            if content.startswith("```json"):
-                content = content[7:-3]
-            elif content.startswith("```"):
-                content = content[3:-3]
-                
-            return json.loads(content)
-            
-        except Exception as e:
-            if "429" in str(e) and attempt < max_retries - 1:
-                logger.warning(f"Rate limited (429). Retrying in 5 seconds... (Attempt {attempt + 1}/{max_retries})")
-                time.sleep(5)
-                continue
-            
-            logger.error(f"Error calling Groq: {e}")
-            # Fallback to mock on error
-            return {
-                "match_percentage": 50,
-                "strengths": ["API Error - Mock Data"],
-                "weaknesses": ["API Error - Mock Data"],
-                "missing_keywords": ["API Error"],
-                "likelihood": "Low"
-            }
+    if latex_resume:
+        user_prompt_parts.append(f"Candidate Master LaTeX Resume:\n{latex_resume}")
+        
+    if projects_meta:
+        user_prompt_parts.append(f"Candidate Projects Metadata:\n{json.dumps(projects_meta, indent=2)}")
+        
+    user_prompt_parts.append(f"Scraped Job Description:\n{job_description}")
+    
+    if job_metadata:
+        user_prompt_parts.append(f"Scraped Job Metadata/Requirements:\n{json.dumps(job_metadata, indent=2)}")
+
+    user_prompt = "\n\n=== SECTION ===\n".join(user_prompt_parts)
+
+    try:
+        return provider.generate_json(system_prompt=system_prompt, user_prompt=user_prompt)
+    except Exception as e:
+        logger.error(f"Job match analysis failed: {e}")
+        return {
+            "match_percentage": 0,
+            "resume_similarity": 0,
+            "skill_overlap": 0,
+            "github_overlap": 0,
+            "keyword_overlap": 0,
+            "missing_skills": [],
+            "strengths": [],
+            "weaknesses": ["Analysis failed — check API key configuration"],
+            "reasoning": "Failed to analyze job match due to an error."
+        }
 
