@@ -6,7 +6,7 @@ import tempfile
 import zipfile
 import json
 import logging
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
