@@ -33,6 +33,7 @@ def generate_ics_calendar(events: List[Dict[str, Any]], cal_name: str = "AutoApp
         start_str = _format_ics_date(start_dt)
         end_str = _format_ics_date(end_dt)
 
+        clean_description = description.replace("\r\n", "\\n").replace("\n", "\\n")
         lines.extend([
             "BEGIN:VEVENT",
             f"UID:{uid}",
@@ -40,7 +41,7 @@ def generate_ics_calendar(events: List[Dict[str, Any]], cal_name: str = "AutoApp
             f"DTSTART:{start_str}",
             f"DTEND:{end_str}",
             f"SUMMARY:{summary}",
-            f"DESCRIPTION:{description.replace(chr(10), '\\n')}",
+            f"DESCRIPTION:{clean_description}",
             f"LOCATION:{location}",
             "STATUS:CONFIRMED",
             "END:VEVENT",
