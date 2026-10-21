@@ -15,3 +15,8 @@ openai
 reportlab
 pdfminer.six
 python-docx
+beautifulsoup4
+httpx
+python-dotenv
+jinja2
+lxml
