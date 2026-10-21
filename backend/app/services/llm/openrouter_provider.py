@@ -14,6 +14,6 @@ class OpenRouterProvider(OpenAICompatibleProvider):
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         super().__init__(api_key=api_key, model=model)
         # OpenRouter-specific upstream routing preference (e.g. "Groq")
-        upstream = settings.OPENROUTER_PROVIDER
+        upstream = getattr(settings, "OPENROUTER_PROVIDER", None)
         if upstream:
             self.extra_body = {"provider": {"order": [upstream], "allow_fallbacks": True}}

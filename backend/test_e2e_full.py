@@ -132,8 +132,8 @@ def run_full_e2e_test():
     app_id = init_resp.json()["application_id"]
     print(f"Created Application ID={app_id}. Polling progress checklist...")
 
-    # 9. Poll progress until complete
-    max_wait = 45
+    # 9. Poll progress until complete (LLM tailoring can take several minutes)
+    max_wait = 420
     start_time = time.time()
     completed = False
     last_prog = {}
@@ -151,10 +151,13 @@ def run_full_e2e_test():
         if status in ("generated", "completed") and len(completed_tasks) >= 4:
             completed = True
             break
+        if status == "failed":
+            break
         time.sleep(2)
 
     print(f"\nPipeline finished! Final status: {status}")
     print("Task progress summary:", json.dumps(last_prog, indent=2))
+    assert status == "generated", f"Pipeline did not reach 'generated' status: {json.dumps(last_prog)}"
 
     # 10. Test PDF and LaTeX Download Endpoints
     print("\n---> 8. Testing Resume PDF & LaTeX Download Endpoints...")

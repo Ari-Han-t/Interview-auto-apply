@@ -121,6 +121,37 @@ export default function Login() {
             {status}
           </p>
         )}
+
+        {/* Example Demo User */}
+        <div className="mt-6 pt-5 border-t border-zinc-100">
+          <div className="bg-zinc-50 border border-zinc-200/80 rounded-xl p-3.5 text-left">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                Example Demo Account
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-200/70 text-zinc-700 font-semibold">
+                ID: 34
+              </span>
+            </div>
+            <div className="text-xs font-semibold text-zinc-900">Maya Patel</div>
+            <div className="text-[11px] text-zinc-500 mb-2.5">
+              Senior Full-Stack & AI Systems Engineer
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEmail("maya.patel@autoapply.dev");
+                setPassword("AutoApply@2026!");
+                setStatus("");
+                setIsRegister(false);
+              }}
+              className="w-full py-1.5 px-3 bg-white hover:bg-zinc-100 border border-zinc-200 text-zinc-700 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+            >
+              <Sparkles size={13} className="text-indigo-600" />
+              Fill Example User Credentials
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -9,9 +9,13 @@ def fetch_github_projects(username: str) -> List[Dict[str, Any]]:
     Fetches the public repositories for a given GitHub username.
     Filters out forks to only return original projects.
     """
-    logger.info(f"Fetching GitHub projects for user: {username}")
+    import re
+    safe_username = re.sub(r"[^a-zA-Z0-9_\-]", "", username)
+    if not safe_username:
+        return []
+    logger.info(f"Fetching GitHub projects for user: {safe_username}")
     
-    url = f"https://api.github.com/users/{username}/repos"
+    url = f"https://api.github.com/users/{safe_username}/repos"
     params = {
         "type": "owner",
         "sort": "updated",

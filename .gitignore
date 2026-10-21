@@ -9,3 +9,11 @@ backend/data/
 frontend/.next/
 frontend/node_modules/
 backend/autoapply.db
+*.db-shm
+*.db-wal
+backend/scratch/
+logs/
+ss/
+data/
+
+

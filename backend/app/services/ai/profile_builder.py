@@ -1,56 +1,109 @@
 from sqlalchemy.orm import Session
-from app.models.candidate import UserProfile, CandidateExperience, Project, UserSkill, Achievement, CourseCertification
+from app.models.candidate import UserProfile, CandidateEducation, CandidateExperience, Project, UserSkill, Achievement, CourseCertification
 from app.models.profile import Profile
 
 def build_profile_text(user_id: int, db: Session) -> str:
     """
     Constructs a unified, markdown-style candidate master knowledge profile description from the normalized SQL tables.
+    Respects candidate visibility toggles to control what information appears in AI application materials.
     """
     user_prof = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
-    if not user_prof:
-        return ""
-        
-    experiences = db.query(CandidateExperience).filter(CandidateExperience.user_id == user_id).all()
-    projects = db.query(Project).filter(Project.user_id == user_id).all()
-    user_skills = db.query(UserSkill).filter(UserSkill.user_id == user_id).all()
-    achievements = db.query(Achievement).filter(Achievement.user_id == user_id).all()
-    courses = db.query(CourseCertification).filter(CourseCertification.user_id == user_id).all()
-    
+    experiences = db.query(CandidateExperience).filter(
+        CandidateExperience.user_id == user_id,
+        CandidateExperience.is_visible == True
+    ).all()
+    projects = db.query(Project).filter(
+        Project.user_id == user_id,
+        Project.is_visible == True
+    ).all()
+    user_skills = db.query(UserSkill).filter(
+        UserSkill.user_id == user_id,
+        UserSkill.is_visible == True
+    ).all()
+    achievements = db.query(Achievement).filter(
+        Achievement.user_id == user_id,
+        Achievement.is_visible == True
+    ).all()
+    courses = db.query(CourseCertification).filter(
+        CourseCertification.user_id == user_id,
+        CourseCertification.is_visible == True
+    ).all()
+    educations = db.query(CandidateEducation).filter(
+        CandidateEducation.user_id == user_id,
+        CandidateEducation.is_visible == True
+    ).all()
+
     parts = []
-    if user_prof.full_name:
-        parts.append(f"Name: {user_prof.full_name}")
-    if user_prof.email:
-        parts.append(f"Email: {user_prof.email}")
-    if user_prof.phone:
-        parts.append(f"Phone: {user_prof.phone}")
-    if user_prof.github:
-        parts.append(f"GitHub Profile: {user_prof.github}")
-    if user_prof.linkedin:
-        parts.append(f"LinkedIn Profile: {user_prof.linkedin}")
-    if user_prof.current_location:
-        parts.append(f"Location: {user_prof.current_location}")
+    if user_prof:
+        display_name = user_prof.full_name or ""
+        if user_prof.preferred_name:
+            display_name += f" ({user_prof.preferred_name})"
+        if display_name:
+            parts.append(f"Name: {display_name}")
+        if user_prof.email:
+            parts.append(f"Email: {user_prof.email}")
+        if user_prof.phone:
+            parts.append(f"Phone: {user_prof.phone}")
+        if user_prof.github:
+            parts.append(f"GitHub Profile: {user_prof.github}")
+        if user_prof.linkedin:
+            parts.append(f"LinkedIn Profile: {user_prof.linkedin}")
+        if user_prof.portfolio:
+            parts.append(f"Portfolio Website: {user_prof.portfolio}")
+        if user_prof.website:
+            parts.append(f"Personal Website: {user_prof.website}")
+        if user_prof.current_location:
+            parts.append(f"Location: {user_prof.current_location}")
+        if user_prof.bio:
+            parts.append(f"Bio: {user_prof.bio}")
+        if user_prof.availability:
+            parts.append(f"Availability: {user_prof.availability}")
         
-    if user_prof.degree or user_prof.university:
-        edu_details = f"Education: {user_prof.degree or ''} from {user_prof.university or ''}"
+    # Education
+    if educations:
+        parts.append("\nEducation:")
+        for edu in educations:
+            edu_line = f"- {edu.degree or ''}"
+            if edu.specialization:
+                edu_line += f" in {edu.specialization}"
+            edu_line += f" from {edu.institution}"
+            if edu.graduation_year:
+                edu_line += f" (Graduation: {edu.graduation_year})"
+            if edu.cgpa:
+                edu_line += f" [CGPA/GPA: {edu.cgpa}]"
+            parts.append(edu_line)
+            if edu.coursework:
+                parts.append(f"  Relevant Coursework: {', '.join(edu.coursework)}")
+    elif user_prof.degree or user_prof.university:
+        edu_details = f"Education: {user_prof.degree or ''}"
+        if user_prof.specialization:
+            edu_details += f" in {user_prof.specialization}"
+        edu_details += f" from {user_prof.university or ''}"
         if user_prof.graduation_year:
             edu_details += f" (Graduation: {user_prof.graduation_year})"
         if user_prof.cgpa:
             edu_details += f" (CGPA: {user_prof.cgpa})"
         parts.append(edu_details)
+        if user_prof.coursework:
+            parts.append(f"Relevant Coursework: {', '.join(user_prof.coursework)}")
         
     if user_skills:
         parts.append("\nSkills:")
         for us in user_skills:
-            parts.append(f"- {us.skill.name} (Years used: {us.years_used}, Confidence level: {us.confidence}/5)")
+            cat_str = f" [{us.category}]" if hasattr(us, "category") and us.category else ""
+            parts.append(f"- {us.skill.name}{cat_str} (Years used: {us.years_used}, Confidence level: {us.confidence}/5)")
             
     if experiences:
         parts.append("\nExperience & Internships:")
         for exp in experiences:
             job_type = "Internship" if exp.internship_or_fulltime == "internship" else "Full-time"
             duration = f"{exp.start_date or ''} - {exp.end_date or 'Present'}"
-            parts.append(f"- {exp.title} at {exp.company} ({job_type}, {duration}, Months: {exp.months_of_experience})")
+            loc = f", {exp.location}" if getattr(exp, "location", None) else ""
+            parts.append(f"- {exp.title} at {exp.company}{loc} ({job_type}, {duration}, Months: {exp.months_of_experience})")
             if exp.description:
                 parts.append(f"  Description: {exp.description}")
+            if getattr(exp, "technologies", None):
+                parts.append(f"  Technologies: {', '.join(exp.technologies)}")
                 
     if projects:
         parts.append("\nProjects & Engineering Works:")

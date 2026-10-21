@@ -19,12 +19,12 @@ class AzureOpenAIProvider(LLMProvider):
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.api_keys = split_keys(api_key) if api_key else keys_from_settings("AZURE_OPENAI_API_KEY")
         self._key_index = 0
-        self.endpoint = settings.AZURE_OPENAI_ENDPOINT
-        self.deployment = settings.AZURE_OPENAI_DEPLOYMENT
-        self.api_version = settings.AZURE_OPENAI_API_VERSION
+        self.endpoint = getattr(settings, "AZURE_OPENAI_ENDPOINT", "")
+        self.deployment = getattr(settings, "AZURE_OPENAI_DEPLOYMENT", "")
+        self.api_version = getattr(settings, "AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
         self.model = (
             model
-            or settings.AZURE_OPENAI_MODEL
+            or getattr(settings, "AZURE_OPENAI_MODEL", "")
             or self.deployment
         )
         self.client: Optional[AzureOpenAI] = None

@@ -10,6 +10,7 @@ from app.models.job import Job
 from app.models.profile import Profile
 from app.models.application import Application
 from app.models.cover_letter import CoverLetter
+from app.models.application_history import ApplicationHistory
 from app.models.candidate import Project, JobRequirement, UserSkill
 from app.services.ai.job_analyzer import analyze_job_details
 from app.services.ai.matcher import analyze_job_match
@@ -187,7 +188,81 @@ def run_resume_tailoring(
                 f"[GLOBAL]\n{effective_global}\n\n[THIS JOB — higher priority]\n{effective_job_instructions}"
             )
 
-        if latex_resume:
+        # Load candidate Content Library for modular assembly
+        from app.services.resume_compiler.candidate_data import load_candidate_library
+        from app.services.resume_compiler.assembly_engine import generate_assembly_plan
+        from app.services.resume_compiler.renderer import render_modular_resume
+        from app.services.resume_compiler.version_service import save_immutable_resume_version
+        from app.services.resume_compiler.compiler import compile_latex_securely
+
+        db = SessionLocal()
+        candidate_data = {}
+        job_dict = {}
+        try:
+            candidate_data = load_candidate_library(user_id, db)
+            job_obj = db.query(Job).filter(Job.id == job_id).first()
+            if job_obj:
+                job_dict = {
+                    "id": job_obj.id,
+                    "title": job_obj.title,
+                    "company": job_obj.company,
+                    "description": job_obj.description or "",
+                    "required_skills_json": job_obj.required_skills_json or [],
+                    "tech_stack_json": job_obj.tech_stack_json or [],
+                }
+        finally:
+            db.close()
+
+        # Check if candidate has structured data in Content Library
+        has_library_content = bool(
+            candidate_data.get("projects") or 
+            candidate_data.get("experience") or 
+            candidate_data.get("education") or 
+            candidate_data.get("skills")
+        )
+
+        plan = None
+        version_id = None
+
+        if has_library_content:
+            # Generate structured assembly plan
+            effective_instructions = (job_instructions or global_instructions or "").strip() or None
+            plan = generate_assembly_plan(
+                candidate_data=candidate_data,
+                job=job_dict,
+                custom_instructions=effective_instructions,
+                target_page_length=1
+            )
+
+            # Render controlled modular LaTeX document
+            resume_text = render_modular_resume(
+                candidate_data=candidate_data,
+                assembly_plan=plan,
+                template_name=plan.get("template_name", "clean_ats"),
+                template_options=plan.get("template_options")
+            )
+
+            # Persist immutable version linked to job and application
+            db = SessionLocal()
+            try:
+                version_record = save_immutable_resume_version(
+                    db=db,
+                    user_id=user_id,
+                    job_id=job_id,
+                    application_id=application_id,
+                    name=f"{safe_company} - Tailored Modular Resume",
+                    latex_source=resume_text,
+                    assembly_plan=plan,
+                    template_name=plan.get("template_name", "clean_ats"),
+                    template_options=plan.get("template_options"),
+                    notes=f"Auto-generated modular plan for {job_title} at {safe_company}"
+                )
+                version_id = version_record.id
+                resume_pdf_path = version_record.storage_path
+            finally:
+                db.close()
+
+        elif latex_resume:
             resume_text = generate_tailored_resume(
                 master_profile=latex_resume,
                 is_latex=True,
@@ -205,7 +280,7 @@ def run_resume_tailoring(
                 resume_pdf_path = tex_path
                 logger.warning(f"Compilation fallback to .tex due to error: {e}")
         else:
-            # Markdown/text resume — still ship knowledge base + instructions + raw text
+            # Markdown/text resume
             db = SessionLocal()
             try:
                 profile_text = build_profile_text(user_id, db)
@@ -228,7 +303,17 @@ def run_resume_tailoring(
         finally:
             db.close()
 
-        update_task_progress(application_id, "tailoring_resume", "completed", result={"path": resume_pdf_path})
+        update_task_progress(
+            application_id, 
+            "tailoring_resume", 
+            "completed", 
+            result={
+                "path": resume_pdf_path,
+                "plan": plan,
+                "version_id": version_id,
+                "is_modular": has_library_content
+            }
+        )
         return resume_pdf_path
     except Exception as e:
         update_task_progress(application_id, "tailoring_resume", "failed", error=str(e))
@@ -245,68 +330,79 @@ def run_cover_letter(
     user_instructions: str = None,
 ):
     update_task_progress(application_id, "cover_letter", "running")
+    db = SessionLocal()
     try:
-        # Generate cover letter based on profile
-        cl_text = generate_cover_letter(
-            profile_text,
-            company,
-            job_title,
-            match_strengths=None,
-            user_instructions=user_instructions,
+        from app.services.cover_letter.service import (
+            generate_personalized_cover_letter,
+            save_cover_letter_version,
         )
-        
-        # Save to DB
-        db = SessionLocal()
-        try:
-            cl_record = db.query(CoverLetter).filter(CoverLetter.job_id == job_id, CoverLetter.user_id == user_id).first()
-            if not cl_record:
-                cl_record = CoverLetter(
-                    user_id=user_id,
-                    job_id=job_id,
-                    content=cl_text,
-                    format="md"
-                )
-                db.add(cl_record)
-            else:
-                cl_record.content = cl_text
-            db.commit()
-            cl_id = cl_record.id
-        finally:
-            db.close()
-            
-        cl_pdf_path = export_text_to_pdf(cl_text, f"cl_{user_id}_{cl_id}.pdf")
-        
-        db = SessionLocal()
-        try:
-            app = db.query(Application).filter(Application.id == application_id).first()
-            if app:
-                app.cover_letter_url = cl_pdf_path
-                db.commit()
-        finally:
-            db.close()
 
-        update_task_progress(application_id, "cover_letter", "completed", result={"path": cl_pdf_path, "preview": cl_text})
-        return cl_text
+        gen_res = generate_personalized_cover_letter(
+            user_id=user_id,
+            job_id=job_id,
+            style="concise",
+            candidate_motivation=user_instructions,
+            application_id=application_id,
+            db=db,
+        )
+
+        cl_record = save_cover_letter_version(
+            user_id=user_id,
+            job_id=job_id,
+            content=gen_res["content"],
+            style=gen_res["style"],
+            candidate_motivation=gen_res["candidate_motivation"],
+            selected_projects=gen_res["selected_projects"],
+            selected_experiences=gen_res["selected_experiences"],
+            selected_achievements=gen_res["selected_achievements"],
+            application_id=application_id,
+            is_approved=True,
+            sources_used=gen_res["sources_used"],
+            db=db,
+        )
+
+        cl_pdf_path = export_text_to_pdf(cl_record.content, f"cl_{user_id}_{cl_record.id}.pdf")
+        app = db.query(Application).filter(Application.id == application_id).first()
+        if app:
+            app.cover_letter_url = cl_pdf_path
+            db.commit()
+
+        update_task_progress(
+            application_id,
+            "cover_letter",
+            "completed",
+            result={"path": cl_pdf_path, "preview": cl_record.content, "version_id": cl_record.id},
+        )
+        return cl_record.content
     except Exception as e:
+        logger.error(f"Cover letter generation failed in pipeline: {e}")
         update_task_progress(application_id, "cover_letter", "failed", error=str(e))
         raise e
+    finally:
+        db.close()
 
-def run_company_research(application_id: int, company: str, job_title: str, profile_text: str):
+def run_company_research(application_id: int, user_id: int, job_id: int, company: str, job_title: str, profile_text: str):
     update_task_progress(application_id, "company_research", "running")
+    db = SessionLocal()
     try:
-        prompt = (
-            f"You are a professional company research assistant. Research '{company}' for the role of '{job_title}'.\n"
-            f"Summarize the following in a neat, clear markdown format (with headers):\n"
-            f"1. Core business, products, and services.\n"
-            f"2. Known work culture, team values, and mission.\n"
-            f"3. Why this candidate fits their mission based on their background summary: {profile_text[:600]}."
+        from app.services.company_research.service import generate_company_research
+
+        research_record = generate_company_research(
+            job_id=job_id,
+            user_id=user_id,
+            db=db,
+            force_refresh=False,
         )
-        research = _llm().generate_text(system_prompt="You are a corporate research bot.", user_prompt=prompt)
-        update_task_progress(application_id, "company_research", "completed", result=research)
-        return research
+
+        result_content = research_record.summary_markdown or research_record.company_overview
+        update_task_progress(application_id, "company_research", "completed", result=result_content)
+        return result_content
     except Exception as e:
+        logger.error(f"Company research generation failed in pipeline: {e}")
         update_task_progress(application_id, "company_research", "failed", error=str(e))
         raise e
+    finally:
+        db.close()
 
 def run_interview_prep(application_id: int, company: str, job_title: str, profile_text: str, job_desc: str):
     update_task_progress(application_id, "interview_prep", "running")
@@ -395,34 +491,46 @@ def execute_analysis_pipeline(application_id: int, user_id: int, job_id: int):
         combined_instructions = (job_instructions or global_instructions) or None
 
     # Define tasks to run concurrently
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
-        # Launch concurrently
-        futures = {
-            executor.submit(
-                run_requirement_extraction, application_id, job_id, job_title, job_desc
-            ): "parsing_job",
-            executor.submit(
-                run_resume_match, application_id, user_id, job_id, profile_text, job_desc, projects_meta, latex_resume
-            ): "matching_resume",
-            executor.submit(
-                run_resume_tailoring,
+    tasks = {
+        "parsing_job": (
+            run_requirement_extraction,
+            (application_id, job_id, job_title, job_desc),
+        ),
+        "matching_resume": (
+            run_resume_match,
+            (application_id, user_id, job_id, profile_text, job_desc, projects_meta, latex_resume),
+        ),
+        "tailoring_resume": (
+            run_resume_tailoring,
+            (
                 application_id, user_id, job_id, user_prefix, safe_company,
                 latex_resume, job_desc, job_title, skills_list,
                 global_instructions, job_instructions, raw_resume_text,
-            ): "tailoring_resume",
-            executor.submit(
-                run_cover_letter, application_id, user_id, job_id, profile_text, company, job_title, safe_company,
-                combined_instructions,
-            ): "cover_letter",
-            executor.submit(
-                run_company_research, application_id, company, job_title, profile_text
-            ): "company_research",
-            executor.submit(
-                run_interview_prep, application_id, company, job_title, profile_text, job_desc
-            ): "interview_prep"
+            ),
+        ),
+        "cover_letter": (
+            run_cover_letter,
+            (application_id, user_id, job_id, profile_text, company, job_title, safe_company, combined_instructions),
+        ),
+        "company_research": (
+            run_company_research,
+            (application_id, user_id, job_id, company, job_title, profile_text),
+        ),
+        "interview_prep": (
+            run_interview_prep,
+            (application_id, company, job_title, profile_text, job_desc),
+        ),
+    }
+
+    # Run concurrently
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+        futures = {
+            executor.submit(fn, *args): name
+            for name, (fn, args) in tasks.items()
         }
 
         # Wait for all tasks to finish
+        failed_tasks = []
         for future in concurrent.futures.as_completed(futures):
             task_name = futures[future]
             try:
@@ -430,14 +538,35 @@ def execute_analysis_pipeline(application_id: int, user_id: int, job_id: int):
                 logger.info(f"Task '{task_name}' completed successfully in pipeline.")
             except Exception as e:
                 logger.error(f"Task '{task_name}' failed in pipeline: {e}")
+                failed_tasks.append(task_name)
+
+    # One sequential retry pass — long LLM calls occasionally fail on
+    # transient connection errors even with client-level retries.
+    for task_name in failed_tasks:
+        fn, args = tasks[task_name]
+        logger.warning(f"Retrying pipeline task '{task_name}' once after failure.")
+        try:
+            fn(*args)
+        except Exception as e:
+            logger.error(f"Retry of pipeline task '{task_name}' failed: {e}")
 
     # Finalize application record
     db = SessionLocal()
     try:
         app = db.query(Application).filter(Application.id == application_id).first()
         if app:
-            app.status = "generated"
-            app.next_action = "Review and Apply"
+            resume_ok = bool(app.resume_version_url) and os.path.exists(app.resume_version_url)
+            if resume_ok:
+                app.status = "generated"
+                app.next_action = "Review and Apply"
+            else:
+                app.status = "failed"
+                app.next_action = "Generation failed — run Analyse & Apply again"
+                db.add(ApplicationHistory(
+                    application_id=application_id,
+                    status="failed",
+                    notes="Resume generation failed after retry. Please re-run the pipeline.",
+                ))
             db.commit()
     except Exception as e:
         logger.error(f"Failed to finalize application status: {e}")

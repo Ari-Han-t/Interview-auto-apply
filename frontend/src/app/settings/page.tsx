@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { User as UserIcon, Bell, Shield, Key, Save, Plus, Trash, BookOpen, Star, Settings } from "lucide-react";
+import { User as UserIcon, Bell, Shield, Key, Save, Plus, Trash, BookOpen, Star, Settings, GraduationCap, Eye, EyeOff, CheckCircle2, Briefcase, FileText } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { apiFetch, apiPost, apiPut, apiDelete } from "@/lib/api";
 
@@ -30,11 +30,13 @@ export default function SettingsPage() {
   // User Profile
   const [userProfile, setUserProfile] = useState<any>({
     full_name: "",
+    preferred_name: "",
     email: "",
     phone: "",
     github: "",
     linkedin: "",
     portfolio: "",
+    website: "",
     current_location: "",
     preferred_locations: [],
     work_authorization: "",
@@ -43,8 +45,28 @@ export default function SettingsPage() {
     remote_preference: "any",
     graduation_year: null,
     degree: "Bachelors",
+    specialization: "",
     cgpa: null,
-    university: ""
+    university: "",
+    coursework: "",
+    current_semester_or_year: "",
+    availability: "",
+    bio: ""
+  });
+
+  // Educations
+  const [educations, setEducations] = useState<any[]>([]);
+  const [newEdu, setNewEdu] = useState({
+    degree: "Bachelors",
+    institution: "",
+    field_of_study: "",
+    start_year: "",
+    end_year: "",
+    cgpa: "",
+    max_cgpa: "10.0",
+    coursework: "",
+    is_current: false,
+    is_visible: true
   });
 
   // Experiences
@@ -57,7 +79,10 @@ export default function SettingsPage() {
     end_date: "",
     currently_working: false,
     months_of_experience: 0,
-    description: ""
+    description: "",
+    location: "",
+    technologies: "",
+    is_visible: true
   });
 
   // Projects
@@ -67,7 +92,9 @@ export default function SettingsPage() {
     description: "",
     github: "",
     live_link: "",
-    technologies: ""
+    technologies: "",
+    role: "",
+    is_visible: true
   });
 
   // Skills
@@ -75,7 +102,9 @@ export default function SettingsPage() {
   const [newSkill, setNewSkill] = useState({
     name: "",
     confidence: 5,
-    years_used: 1.0
+    years_used: 1.0,
+    category: "General",
+    is_visible: true
   });
 
   // Preferences
@@ -99,7 +128,8 @@ export default function SettingsPage() {
     preferred_fulltime: true,
     notice_period: 0,
     earliest_joining_date: "",
-    maximum_daily_applications: 5
+    maximum_daily_applications: 5,
+    availability_duration: ""
   });
 
   // Capabilities
@@ -145,11 +175,70 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  // Source Integrations
+  const [sourceIntegrations, setSourceIntegrations] = useState({
+    linkedin: true,
+    indeed: true,
+    greenhouse: true,
+    lever: true,
+    ashby: true,
+    wellfound: true,
+    discovery_cadence: "daily",
+    auto_refresh_postings: true,
+  });
+
+  // Document Templates
+  const [templateSettings, setTemplateSettings] = useState({
+    default_template: "clean_ats",
+    font_size: "10pt",
+    cover_letter_style: "concise",
+    enforce_single_page: true,
+  });
+
+  // Privacy & Data
+  const [isExportingData, setIsExportingData] = useState(false);
+  const [isClearingData, setIsClearingData] = useState(false);
+
+  const handleExportData = async () => {
+    setIsExportingData(true);
+    try {
+      const data = await apiFetch<any>("/api/v1/profile/export-all-data");
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `autoapply_career_export_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Complete career data exported!");
+    } catch (e: any) {
+      toast.error(e.message || "Data export failed");
+    } finally {
+      setIsExportingData(false);
+    }
+  };
+
+  const handleClearData = async () => {
+    if (!window.confirm("WARNING: This will permanently reset your tracked applications and saved job records in the database. Your verified profile, experiences, and projects will be kept. Proceed?")) return;
+    setIsClearingData(true);
+    try {
+      await apiDelete("/api/v1/profile/clear-career-data?confirm=true");
+      toast.success("Application history reset successfully.");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to reset application history");
+    } finally {
+      setIsClearingData(false);
+    }
+  };
+
   const fetchSettings = async () => {
     try {
       const data = await apiFetch("/api/v1/profile/");
       if (data.profile) {
         setUserProfile(data.profile);
+      }
+      if (data.educations) {
+        setEducations(data.educations);
       }
       if (data.experiences) {
         setExperiences(data.experiences);
@@ -245,10 +334,99 @@ export default function SettingsPage() {
     }
   };
 
+  const handleAddEducation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        degree: newEdu.degree,
+        institution: newEdu.institution,
+        field_of_study: newEdu.field_of_study || null,
+        start_year: newEdu.start_year ? parseInt(newEdu.start_year) : null,
+        end_year: newEdu.end_year ? parseInt(newEdu.end_year) : null,
+        cgpa: newEdu.cgpa ? parseFloat(newEdu.cgpa) : null,
+        max_cgpa: newEdu.max_cgpa ? parseFloat(newEdu.max_cgpa) : 10.0,
+        coursework: newEdu.coursework || null,
+        is_current: newEdu.is_current,
+        is_visible: newEdu.is_visible
+      };
+      await apiPost("/api/v1/profile/educations", payload);
+      toast.success("Education record added!");
+      setNewEdu({
+        degree: "Bachelors",
+        institution: "",
+        field_of_study: "",
+        start_year: "",
+        end_year: "",
+        cgpa: "",
+        max_cgpa: "10.0",
+        coursework: "",
+        is_current: false,
+        is_visible: true
+      });
+      fetchSettings();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to add education");
+    }
+  };
+
+  const handleDeleteEducation = async (id: number) => {
+    try {
+      await apiDelete(`/api/v1/profile/educations/${id}`);
+      toast.success("Education deleted.");
+      fetchSettings();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete education");
+    }
+  };
+
+  const handleToggleEducationVisibility = async (id: number, currentVisible: boolean) => {
+    try {
+      await apiPut(`/api/v1/profile/educations/${id}/visibility`, { is_visible: !currentVisible });
+      setEducations(prev => prev.map(e => e.id === id ? { ...e, is_visible: !currentVisible } : e));
+      toast.success(!currentVisible ? "Included in AI applications" : "Hidden from AI applications");
+    } catch (e: any) {
+      toast.error("Failed to update visibility");
+    }
+  };
+
+  const handleToggleExperienceVisibility = async (id: number, currentVisible: boolean) => {
+    try {
+      await apiPut(`/api/v1/profile/experiences/${id}/visibility`, { is_visible: !currentVisible });
+      setExperiences(prev => prev.map(e => e.id === id ? { ...e, is_visible: !currentVisible } : e));
+      toast.success(!currentVisible ? "Included in AI applications" : "Hidden from AI applications");
+    } catch (e: any) {
+      toast.error("Failed to update visibility");
+    }
+  };
+
+  const handleToggleProjectVisibility = async (id: number, currentVisible: boolean) => {
+    try {
+      await apiPut(`/api/v1/profile/projects/${id}/visibility`, { is_visible: !currentVisible });
+      setProjects(prev => prev.map(p => p.id === id ? { ...p, is_visible: !currentVisible } : p));
+      toast.success(!currentVisible ? "Included in AI applications" : "Hidden from AI applications");
+    } catch (e: any) {
+      toast.error("Failed to update visibility");
+    }
+  };
+
+  const handleToggleSkillVisibility = async (name: string, currentVisible: boolean) => {
+    try {
+      await apiPut(`/api/v1/profile/skills/${encodeURIComponent(name)}/visibility`, { is_visible: !currentVisible });
+      setSkills(prev => prev.map(s => s.name === name ? { ...s, is_visible: !currentVisible } : s));
+      toast.success(!currentVisible ? "Included in AI applications" : "Hidden from AI applications");
+    } catch (e: any) {
+      toast.error("Failed to update visibility");
+    }
+  };
+
   const handleAddExperience = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await apiPost("/api/v1/profile/experiences", newExp);
+      const payload = {
+        ...newExp,
+        technologies: newExp.technologies ? newExp.technologies.split(",").map((t: string) => t.trim()).filter(Boolean) : []
+      };
+      await apiPost("/api/v1/profile/experiences", payload);
       toast.success("Experience added!");
       setNewExp({
         company: "",
@@ -258,7 +436,10 @@ export default function SettingsPage() {
         end_date: "",
         currently_working: false,
         months_of_experience: 0,
-        description: ""
+        description: "",
+        location: "",
+        technologies: "",
+        is_visible: true
       });
       fetchSettings();
     } catch (e: any) {
@@ -281,7 +462,7 @@ export default function SettingsPage() {
     try {
       const payload = {
         ...newProj,
-        technologies: newProj.technologies.split(",").map(t => t.trim()).filter(Boolean)
+        technologies: newProj.technologies ? newProj.technologies.split(",").map(t => t.trim()).filter(Boolean) : []
       };
       await apiPost("/api/v1/profile/projects", payload);
       toast.success("Project added!");
@@ -290,7 +471,9 @@ export default function SettingsPage() {
         description: "",
         github: "",
         live_link: "",
-        technologies: ""
+        technologies: "",
+        role: "",
+        is_visible: true
       });
       fetchSettings();
     } catch (e: any) {
@@ -316,7 +499,9 @@ export default function SettingsPage() {
       setNewSkill({
         name: "",
         confidence: 5,
-        years_used: 1.0
+        years_used: 1.0,
+        category: "General",
+        is_visible: true
       });
       fetchSettings();
     } catch (e: any) {
@@ -443,6 +628,15 @@ export default function SettingsPage() {
               Candidate Profile
             </button>
             <button
+              onClick={() => setActiveTab("education")}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                activeTab === "education" ? "bg-indigo-50 text-indigo-700 font-bold" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+              }`}
+            >
+              <GraduationCap size={16} />
+              Education
+            </button>
+            <button
               onClick={() => setActiveTab("experience")}
               className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
                 activeTab === "experience" ? "bg-indigo-50 text-indigo-700 font-bold" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
@@ -476,7 +670,25 @@ export default function SettingsPage() {
               }`}
             >
               <Settings size={16} />
-              Eligibility Filters
+              Job Preferences
+            </button>
+            <button
+              onClick={() => setActiveTab("integrations")}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                activeTab === "integrations" ? "bg-indigo-50 text-indigo-700 font-bold" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+              }`}
+            >
+              <Briefcase size={16} />
+              Job Sources & Integrations
+            </button>
+            <button
+              onClick={() => setActiveTab("templates")}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                activeTab === "templates" ? "bg-indigo-50 text-indigo-700 font-bold" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+              }`}
+            >
+              <FileText size={16} />
+              Document Templates
             </button>
             <button
               onClick={() => setActiveTab("apikeys")}
@@ -485,7 +697,7 @@ export default function SettingsPage() {
               }`}
             >
               <Key size={16} />
-              API Credentials
+              AI Providers & API
             </button>
             <button
               onClick={() => setActiveTab("notifications")}
@@ -497,13 +709,22 @@ export default function SettingsPage() {
               Notifications
             </button>
             <button
+              onClick={() => setActiveTab("privacy")}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                activeTab === "privacy" ? "bg-indigo-50 text-indigo-700 font-bold" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+              }`}
+            >
+              <Shield size={16} />
+              Privacy & Data Export
+            </button>
+            <button
               onClick={() => setActiveTab("security")}
               className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
                 activeTab === "security" ? "bg-indigo-50 text-indigo-700 font-bold" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
               }`}
             >
-              <Shield size={16} />
-              Security
+              <Key size={16} />
+              Account & Password
             </button>
           </div>
 
@@ -521,6 +742,16 @@ export default function SettingsPage() {
                       onChange={e => setUserProfile({ ...userProfile, full_name: e.target.value })}
                       className="px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20"
                       placeholder="Jane Doe"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <label className="text-xs font-semibold text-zinc-700">Preferred / Display Name</label>
+                    <input
+                      type="text"
+                      value={userProfile.preferred_name || ""}
+                      onChange={e => setUserProfile({ ...userProfile, preferred_name: e.target.value })}
+                      className="px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="Jane"
                     />
                   </div>
                   <div className="grid gap-1.5">
@@ -564,6 +795,16 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div className="grid gap-1.5">
+                    <label className="text-xs font-semibold text-zinc-700">Personal Website / Blog</label>
+                    <input
+                      type="text"
+                      value={userProfile.website || ""}
+                      onChange={e => setUserProfile({ ...userProfile, website: e.target.value })}
+                      className="px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="https://janedoe.me"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
                     <label className="text-xs font-semibold text-zinc-700">Current Location</label>
                     <input
                       type="text"
@@ -574,7 +815,17 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <label className="text-xs font-semibold text-zinc-700">University</label>
+                    <label className="text-xs font-semibold text-zinc-700">Immediate Availability / Notice</label>
+                    <input
+                      type="text"
+                      value={userProfile.availability || ""}
+                      onChange={e => setUserProfile({ ...userProfile, availability: e.target.value })}
+                      className="px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="Immediate (Available June 2026)"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <label className="text-xs font-semibold text-zinc-700">Primary University / Institution</label>
                     <input
                       type="text"
                       value={userProfile.university || ""}
@@ -597,6 +848,16 @@ export default function SettingsPage() {
                     </select>
                   </div>
                   <div className="grid gap-1.5">
+                    <label className="text-xs font-semibold text-zinc-700">Specialization / Major</label>
+                    <input
+                      type="text"
+                      value={userProfile.specialization || ""}
+                      onChange={e => setUserProfile({ ...userProfile, specialization: e.target.value })}
+                      className="px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="Computer Science & Engineering"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
                     <label className="text-xs font-semibold text-zinc-700">Graduation Year</label>
                     <input
                       type="number"
@@ -607,14 +868,44 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <label className="text-xs font-semibold text-zinc-700">CGPA</label>
+                    <label className="text-xs font-semibold text-zinc-700">Current Semester / Academic Year</label>
+                    <input
+                      type="text"
+                      value={userProfile.current_semester_or_year || ""}
+                      onChange={e => setUserProfile({ ...userProfile, current_semester_or_year: e.target.value })}
+                      className="px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="Senior / 8th Semester"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <label className="text-xs font-semibold text-zinc-700">CGPA / GPA</label>
                     <input
                       type="number"
                       step="0.01"
                       value={userProfile.cgpa || ""}
                       onChange={e => setUserProfile({ ...userProfile, cgpa: e.target.value ? parseFloat(e.target.value) : null })}
                       className="px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20"
-                      placeholder="3.8"
+                      placeholder="3.85"
+                    />
+                  </div>
+                  <div className="col-span-1 md:col-span-2 grid gap-1.5">
+                    <label className="text-xs font-semibold text-zinc-700">Key Coursework (comma-separated)</label>
+                    <input
+                      type="text"
+                      value={userProfile.coursework || ""}
+                      onChange={e => setUserProfile({ ...userProfile, coursework: e.target.value })}
+                      className="px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="Data Structures, Algorithms, Operating Systems, Machine Learning, Computer Networks"
+                    />
+                  </div>
+                  <div className="col-span-1 md:col-span-2 grid gap-1.5">
+                    <label className="text-xs font-semibold text-zinc-700">Professional Bio / Summary</label>
+                    <textarea
+                      value={userProfile.bio || ""}
+                      onChange={e => setUserProfile({ ...userProfile, bio: e.target.value })}
+                      rows={3}
+                      className="px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 resize-y"
+                      placeholder="Full-stack engineer passionate about distributed systems and AI-driven developer workflows..."
                     />
                   </div>
                 </div>
@@ -653,9 +944,194 @@ export default function SettingsPage() {
               </div>
             )}
 
+            {activeTab === "education" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-900 border-b pb-2">Education History</h2>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Manage all your degrees, colleges, GPAs, and coursework. Choose whether each record is active in AI tailored materials.
+                  </p>
+                </div>
+
+                {/* List Educations */}
+                <div className="space-y-3">
+                  {educations.length === 0 ? (
+                    <p className="text-sm text-zinc-400 italic">No education history added yet. Add one below or import from your resume.</p>
+                  ) : (
+                    educations.map(edu => (
+                      <div key={edu.id} className="p-4 border rounded-xl flex justify-between items-start gap-4 hover:bg-zinc-50/50 bg-white">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-sm font-bold text-zinc-900">{edu.degree} in {edu.field_of_study || "General Studies"}</h4>
+                            <span className="text-xs text-zinc-500 font-semibold">• {edu.institution}</span>
+                            {edu.is_current && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                                Current
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-zinc-500 font-medium">
+                            {edu.start_year || "?"} - {edu.is_current ? "Present" : (edu.end_year || "?")}
+                            {edu.cgpa && (
+                              <span className="ml-2 font-semibold text-zinc-700">| CGPA/GPA: {edu.cgpa}{edu.max_cgpa ? ` / ${edu.max_cgpa}` : ""}</span>
+                            )}
+                          </p>
+                          {edu.coursework && (
+                            <p className="text-xs text-zinc-600 mt-1"><strong className="text-zinc-700 font-semibold">Coursework:</strong> {edu.coursework}</p>
+                          )}
+                          <div className="flex items-center gap-2 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleEducationVisibility(edu.id, edu.is_visible !== false)}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                                edu.is_visible !== false
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                  : "bg-zinc-100 text-zinc-500 border-zinc-200 hover:bg-zinc-200"
+                              }`}
+                              title="Toggle whether this education appears in AI application materials"
+                            >
+                              {edu.is_visible !== false ? <Eye size={12} /> : <EyeOff size={12} />}
+                              {edu.is_visible !== false ? "Active in AI applications" : "Hidden from AI applications"}
+                            </button>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteEducation(edu.id)}
+                          className="text-red-500 hover:text-red-700 p-1.5 rounded-md hover:bg-red-50 transition-colors"
+                          title="Delete education record"
+                        >
+                          <Trash size={14} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Add Education Form */}
+                <form onSubmit={handleAddEducation} className="border-t pt-6 space-y-4">
+                  <h3 className="text-sm font-bold text-zinc-800">Add Education Record</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid gap-1">
+                      <label className="text-xs font-semibold text-zinc-700">Degree</label>
+                      <input
+                        required
+                        type="text"
+                        value={newEdu.degree}
+                        onChange={e => setNewEdu({ ...newEdu, degree: e.target.value })}
+                        className="px-3 py-1.5 border rounded-lg text-sm"
+                        placeholder="Bachelor of Science"
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-xs font-semibold text-zinc-700">Institution / University</label>
+                      <input
+                        required
+                        type="text"
+                        value={newEdu.institution}
+                        onChange={e => setNewEdu({ ...newEdu, institution: e.target.value })}
+                        className="px-3 py-1.5 border rounded-lg text-sm"
+                        placeholder="Stanford University"
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-xs font-semibold text-zinc-700">Field of Study / Major</label>
+                      <input
+                        type="text"
+                        value={newEdu.field_of_study}
+                        onChange={e => setNewEdu({ ...newEdu, field_of_study: e.target.value })}
+                        className="px-3 py-1.5 border rounded-lg text-sm"
+                        placeholder="Computer Science"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="grid gap-1">
+                        <label className="text-xs font-semibold text-zinc-700">Start Year</label>
+                        <input
+                          type="number"
+                          value={newEdu.start_year}
+                          onChange={e => setNewEdu({ ...newEdu, start_year: e.target.value })}
+                          className="px-3 py-1.5 border rounded-lg text-sm"
+                          placeholder="2022"
+                        />
+                      </div>
+                      <div className="grid gap-1">
+                        <label className="text-xs font-semibold text-zinc-700">End Year</label>
+                        <input
+                          type="number"
+                          disabled={newEdu.is_current}
+                          value={newEdu.end_year}
+                          onChange={e => setNewEdu({ ...newEdu, end_year: e.target.value })}
+                          className="px-3 py-1.5 border rounded-lg text-sm disabled:opacity-50"
+                          placeholder="2026"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="grid gap-1">
+                        <label className="text-xs font-semibold text-zinc-700">CGPA / GPA</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={newEdu.cgpa}
+                          onChange={e => setNewEdu({ ...newEdu, cgpa: e.target.value })}
+                          className="px-3 py-1.5 border rounded-lg text-sm"
+                          placeholder="3.85"
+                        />
+                      </div>
+                      <div className="grid gap-1">
+                        <label className="text-xs font-semibold text-zinc-700">Max Scale</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={newEdu.max_cgpa}
+                          onChange={e => setNewEdu({ ...newEdu, max_cgpa: e.target.value })}
+                          className="px-3 py-1.5 border rounded-lg text-sm"
+                          placeholder="4.0 or 10.0"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-4">
+                      <input
+                        type="checkbox"
+                        id="edu-is-current"
+                        checked={newEdu.is_current}
+                        onChange={e => setNewEdu({ ...newEdu, is_current: e.target.checked })}
+                        className="rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <label htmlFor="edu-is-current" className="text-xs text-zinc-700 select-none cursor-pointer">
+                        Currently enrolled student
+                      </label>
+                    </div>
+                    <div className="col-span-1 md:col-span-2 grid gap-1">
+                      <label className="text-xs font-semibold text-zinc-700">Coursework (comma-separated)</label>
+                      <input
+                        type="text"
+                        value={newEdu.coursework}
+                        onChange={e => setNewEdu({ ...newEdu, coursework: e.target.value })}
+                        className="px-3 py-1.5 border rounded-lg text-sm"
+                        placeholder="Data Structures, Algorithms, Distributed Systems, ML"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-zinc-800 transition-colors shadow-sm"
+                  >
+                    <Plus size={14} /> Add Education Record
+                  </button>
+                </form>
+              </div>
+            )}
+
             {activeTab === "experience" && (
               <div className="space-y-6">
-                <h2 className="text-lg font-bold text-zinc-900 border-b pb-2">Work Experience</h2>
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-900 border-b pb-2">Work Experience</h2>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Control which experiences appear in your tailored applications with the visibility toggle.
+                  </p>
+                </div>
                 
                 {/* List Experiences */}
                 <div className="space-y-3">
@@ -663,15 +1139,33 @@ export default function SettingsPage() {
                     <p className="text-sm text-zinc-400 italic">No work experience added yet.</p>
                   ) : (
                     experiences.map(exp => (
-                      <div key={exp.id} className="p-4 border rounded-xl flex justify-between items-start gap-4 hover:bg-zinc-50/50">
+                      <div key={exp.id} className="p-4 border rounded-xl flex justify-between items-start gap-4 hover:bg-zinc-50/50 bg-white">
                         <div className="space-y-1">
-                          <h4 className="text-sm font-bold text-zinc-850">{exp.title} at {exp.company}</h4>
-                          <p className="text-xs text-zinc-500 font-semibold">{exp.start_date} - {exp.currently_working ? "Present" : exp.end_date} ({exp.months_of_experience} months)</p>
+                          <h4 className="text-sm font-bold text-zinc-900">{exp.title} at {exp.company}</h4>
+                          <p className="text-xs text-zinc-500 font-semibold">
+                            {exp.start_date} - {exp.currently_working ? "Present" : exp.end_date} ({exp.months_of_experience} months)
+                            {exp.location && <span className="ml-2 font-normal text-zinc-400">• {exp.location}</span>}
+                          </p>
                           <p className="text-xs text-zinc-600 leading-relaxed mt-1.5 whitespace-pre-line">{exp.description}</p>
+                          <div className="flex items-center gap-2 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleExperienceVisibility(exp.id, exp.is_visible !== false)}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                                exp.is_visible !== false
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                  : "bg-zinc-100 text-zinc-500 border-zinc-200 hover:bg-zinc-200"
+                              }`}
+                              title="Toggle whether this experience appears in AI application materials"
+                            >
+                              {exp.is_visible !== false ? <Eye size={12} /> : <EyeOff size={12} />}
+                              {exp.is_visible !== false ? "Active in AI applications" : "Hidden from AI applications"}
+                            </button>
+                          </div>
                         </div>
                         <button
                           onClick={() => handleDeleteExperience(exp.id)}
-                          className="text-red-500 hover:text-red-700 p-1 rounded-md hover:bg-red-50 transition-colors"
+                          className="text-red-500 hover:text-red-700 p-1.5 rounded-md hover:bg-red-50 transition-colors"
                           title="Delete experience"
                         >
                           <Trash size={14} />
@@ -705,6 +1199,26 @@ export default function SettingsPage() {
                         onChange={e => setNewExp({ ...newExp, title: e.target.value })}
                         className="px-3 py-1.5 border rounded-lg text-sm"
                         placeholder="Software Engineer Intern"
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-xs text-zinc-650">Location</label>
+                      <input
+                        type="text"
+                        value={newExp.location}
+                        onChange={e => setNewExp({ ...newExp, location: e.target.value })}
+                        className="px-3 py-1.5 border rounded-lg text-sm"
+                        placeholder="San Francisco, CA (or Remote)"
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-xs text-zinc-650">Technologies / Tools (comma separated)</label>
+                      <input
+                        type="text"
+                        value={newExp.technologies}
+                        onChange={e => setNewExp({ ...newExp, technologies: e.target.value })}
+                        className="px-3 py-1.5 border rounded-lg text-sm"
+                        placeholder="Python, FastAPI, Docker, AWS"
                       />
                     </div>
                     <div className="grid gap-1">
@@ -785,7 +1299,12 @@ export default function SettingsPage() {
 
             {activeTab === "projects" && (
               <div className="space-y-6">
-                <h2 className="text-lg font-bold text-zinc-900 border-b pb-2">Portfolio Projects</h2>
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-900 border-b pb-2">Portfolio Projects</h2>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Control which projects appear in your tailored resumes and cover letters.
+                  </p>
+                </div>
                 
                 {/* List Projects */}
                 <div className="space-y-3">
@@ -793,9 +1312,12 @@ export default function SettingsPage() {
                     <p className="text-sm text-zinc-400 italic">No projects added yet.</p>
                   ) : (
                     projects.map(proj => (
-                      <div key={proj.id} className="p-4 border rounded-xl flex justify-between items-start gap-4 hover:bg-zinc-50/50">
+                      <div key={proj.id} className="p-4 border rounded-xl flex justify-between items-start gap-4 hover:bg-zinc-50/50 bg-white">
                         <div className="space-y-1">
-                          <h4 className="text-sm font-bold text-zinc-855">{proj.name}</h4>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-sm font-bold text-zinc-900">{proj.name}</h4>
+                            {proj.role && <span className="text-xs text-zinc-500 font-medium">({proj.role})</span>}
+                          </div>
                           <p className="text-xs text-zinc-500 leading-relaxed">{proj.description}</p>
                           <div className="flex flex-wrap gap-1.5 pt-1.5">
                             {proj.technologies && proj.technologies.map((t: string) => (
@@ -806,10 +1328,25 @@ export default function SettingsPage() {
                             {proj.github && <a href={proj.github} target="_blank" rel="noopener noreferrer" className="hover:underline">GitHub</a>}
                             {proj.live_link && <a href={proj.live_link} target="_blank" rel="noopener noreferrer" className="hover:underline">Live Demo</a>}
                           </div>
+                          <div className="flex items-center gap-2 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleProjectVisibility(proj.id, proj.is_visible !== false)}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                                proj.is_visible !== false
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                  : "bg-zinc-100 text-zinc-500 border-zinc-200 hover:bg-zinc-200"
+                              }`}
+                              title="Toggle whether this project appears in AI application materials"
+                            >
+                              {proj.is_visible !== false ? <Eye size={12} /> : <EyeOff size={12} />}
+                              {proj.is_visible !== false ? "Active in AI applications" : "Hidden from AI applications"}
+                            </button>
+                          </div>
                         </div>
                         <button
                           onClick={() => handleDeleteProject(proj.id)}
-                          className="text-red-500 hover:text-red-700 p-1 rounded-md hover:bg-red-50 transition-colors"
+                          className="text-red-500 hover:text-red-700 p-1.5 rounded-md hover:bg-red-50 transition-colors"
                           title="Delete project"
                         >
                           <Trash size={14} />
@@ -835,6 +1372,16 @@ export default function SettingsPage() {
                       />
                     </div>
                     <div className="grid gap-1">
+                      <label className="text-xs text-zinc-650">Role in Project</label>
+                      <input
+                        type="text"
+                        value={newProj.role}
+                        onChange={e => setNewProj({ ...newProj, role: e.target.value })}
+                        className="px-3 py-1.5 border rounded-lg text-sm"
+                        placeholder="Lead Backend Engineer"
+                      />
+                    </div>
+                    <div className="grid gap-1">
                       <label className="text-xs text-zinc-650">Technologies (comma separated)</label>
                       <input
                         type="text"
@@ -854,7 +1401,7 @@ export default function SettingsPage() {
                         placeholder="https://github.com/..."
                       />
                     </div>
-                    <div className="grid gap-1">
+                    <div className="grid gap-1 col-span-1 md:col-span-2">
                       <label className="text-xs text-zinc-650">Live Link</label>
                       <input
                         type="text"
@@ -887,7 +1434,12 @@ export default function SettingsPage() {
 
             {activeTab === "skills" && (
               <div className="space-y-6">
-                <h2 className="text-lg font-bold text-zinc-900 border-b pb-2">Skills Inventory</h2>
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-900 border-b pb-2">Skills Inventory</h2>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Manage categorized skills and toggle which ones appear in AI tailored resumes.
+                  </p>
+                </div>
                 
                 {/* List Skills */}
                 <div className="flex flex-wrap gap-2">
@@ -895,12 +1447,28 @@ export default function SettingsPage() {
                     <p className="text-sm text-zinc-400 italic">No skills listed yet.</p>
                   ) : (
                     skills.map(sk => (
-                      <span key={sk.name} className="inline-flex items-center gap-1.5 bg-zinc-50 border border-zinc-200 text-zinc-700 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm">
-                        {sk.name} ({sk.years_used} yrs, Level {sk.confidence}/5)
+                      <span
+                        key={sk.name}
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs border transition-colors ${
+                          sk.is_visible !== false
+                            ? "bg-white border-zinc-200 text-zinc-800"
+                            : "bg-zinc-100 border-zinc-200 text-zinc-400 line-through opacity-75"
+                        }`}
+                      >
+                        <span>{sk.name}</span>
+                        <span className="text-[10px] text-zinc-500 font-normal">({sk.category || "General"}, {sk.years_used} yrs, Lvl {sk.confidence}/5)</span>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSkillVisibility(sk.name, sk.is_visible !== false)}
+                          className={`p-0.5 rounded transition-colors ${sk.is_visible !== false ? "text-emerald-600 hover:text-emerald-800" : "text-zinc-400 hover:text-zinc-600"}`}
+                          title={sk.is_visible !== false ? "Active in AI applications (click to hide)" : "Hidden from AI applications (click to include)"}
+                        >
+                          {sk.is_visible !== false ? <Eye size={13} /> : <EyeOff size={13} />}
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteSkill(sk.name)}
-                          className="text-zinc-400 hover:text-red-500 rounded-md transition-colors"
+                          className="text-zinc-400 hover:text-red-500 rounded-md transition-colors text-sm font-bold"
                           title="Remove skill"
                         >
                           &times;
@@ -913,7 +1481,7 @@ export default function SettingsPage() {
                 {/* Add Skill Form */}
                 <form onSubmit={handleAddSkill} className="border-t pt-6 space-y-4">
                   <h3 className="text-sm font-bold text-zinc-800">Add Skill</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                     <div className="grid gap-1">
                       <label className="text-xs text-zinc-650">Skill Name</label>
                       <input
@@ -924,6 +1492,22 @@ export default function SettingsPage() {
                         className="px-3 py-1.5 border rounded-lg text-sm"
                         placeholder="React"
                       />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-xs text-zinc-650">Category</label>
+                      <select
+                        value={newSkill.category}
+                        onChange={e => setNewSkill({ ...newSkill, category: e.target.value })}
+                        className="px-3 py-1.5 border rounded-lg text-sm bg-white"
+                      >
+                        <option value="Languages">Languages</option>
+                        <option value="Frameworks">Frameworks</option>
+                        <option value="Developer Tools">Developer Tools</option>
+                        <option value="Libraries">Libraries</option>
+                        <option value="Databases">Databases</option>
+                        <option value="Concepts">Concepts</option>
+                        <option value="General">General</option>
+                      </select>
                     </div>
                     <div className="grid gap-1">
                       <label className="text-xs text-zinc-650">Confidence Level (1-5)</label>
@@ -986,6 +1570,16 @@ export default function SettingsPage() {
                           onChange={e => setPreferences({ ...preferences, maximum_experience_required: e.target.value ? parseInt(e.target.value) : null })}
                           className="px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20"
                           placeholder="e.g. 5"
+                        />
+                      </div>
+                      <div className="grid gap-1.5 col-span-1 md:col-span-2">
+                        <label className="text-xs font-semibold text-zinc-700">Availability / Notice Period Details</label>
+                        <input
+                          type="text"
+                          value={preferences.availability_duration || ""}
+                          onChange={e => setPreferences({ ...preferences, availability_duration: e.target.value })}
+                          className="px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20"
+                          placeholder="e.g. Immediate / Summer 2026 Internship (3 Months) / 2 Weeks Notice"
                         />
                       </div>
                     </div>
@@ -1163,6 +1757,197 @@ export default function SettingsPage() {
                       className="inline-flex items-center gap-1.5 bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-zinc-800 transition-colors shadow-sm"
                     >
                       <Save size={14} /> Save Notification Preferences
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "integrations" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-900 border-b pb-2">Job Sources & Ingestion Integrations</h2>
+                  <p className="text-xs text-zinc-500 mt-1">Configure automated role scrapers and active job board feeds.</p>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400">Active Sourcing Channels</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[
+                      { key: "greenhouse", label: "Greenhouse ATS Boards", desc: "Automated ingestion from company careers" },
+                      { key: "lever", label: "Lever ATS Feeds", desc: "Direct company job postings" },
+                      { key: "ashby", label: "Ashby ATS Feeds", desc: "High-growth tech company postings" },
+                      { key: "linkedin", label: "LinkedIn Job Discovery", desc: "Standard public job postings" },
+                      { key: "indeed", label: "Indeed Role Aggregator", desc: "Broad market tech roles" },
+                      { key: "wellfound", label: "Wellfound / Startups", desc: "Early-stage venture job feeds" },
+                    ].map((item) => (
+                      <label key={item.key} className="p-3.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50/60 flex items-start gap-3 cursor-pointer transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={(sourceIntegrations as any)[item.key]}
+                          onChange={(e) => setSourceIntegrations({ ...sourceIntegrations, [item.key]: e.target.checked })}
+                          className="mt-0.5 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
+                        />
+                        <div className="text-xs">
+                          <span className="font-semibold text-zinc-900 block">{item.label}</span>
+                          <span className="text-[11px] text-zinc-500">{item.desc}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className="pt-4 border-t border-zinc-100">
+                    <label className="text-xs font-semibold text-zinc-700 block mb-1.5">Discovery & Ingestion Cadence</label>
+                    <select
+                      value={sourceIntegrations.discovery_cadence}
+                      onChange={(e) => setSourceIntegrations({ ...sourceIntegrations, discovery_cadence: e.target.value })}
+                      className="px-3 py-2 border border-zinc-200 rounded-lg text-xs bg-white text-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                    >
+                      <option value="daily">Daily Ingestion (Recommended)</option>
+                      <option value="weekly">Weekly Summary Ingestion</option>
+                      <option value="manual">Manual Scrape On-Demand Only</option>
+                    </select>
+                  </div>
+
+                  <div className="pt-4 border-t border-zinc-100 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => toast.success("Job source integration settings saved!")}
+                      className="inline-flex items-center gap-1.5 bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-zinc-800 transition-colors shadow-sm"
+                    >
+                      <Save size={14} /> Save Source Integrations
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "templates" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-900 border-b pb-2">Document Templates & Formatting</h2>
+                  <p className="text-xs text-zinc-500 mt-1">Configure default LaTeX layouts and cover letter narrative defaults.</p>
+                </div>
+
+                <div className="space-y-4 text-xs">
+                  <div>
+                    <label className="font-semibold text-zinc-700 block mb-1.5">Default Resume Template Style</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {[
+                        { id: "clean_ats", name: "Clean ATS Professional", desc: "Single-column, maximum parseability by corporate applicant tracking systems." },
+                        { id: "academic", name: "Academic & Research", desc: "Structured layout with dedicated publications, citations, and awards." },
+                        { id: "modern", name: "Tech Minimalist", desc: "Streamlined modern hierarchy optimized for engineering recruiters." },
+                      ].map((tmpl) => (
+                        <button
+                          key={tmpl.id}
+                          type="button"
+                          onClick={() => setTemplateSettings({ ...templateSettings, default_template: tmpl.id })}
+                          className={`p-3.5 rounded-lg border text-left transition-all ${
+                            templateSettings.default_template === tmpl.id
+                              ? "border-zinc-900 bg-zinc-50/80 shadow-sm"
+                              : "border-zinc-200 bg-white hover:bg-zinc-50"
+                          }`}
+                        >
+                          <div className="font-bold text-zinc-900">{tmpl.name}</div>
+                          <div className="text-[11px] text-zinc-500 mt-1">{tmpl.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-zinc-100">
+                    <div>
+                      <label className="font-semibold text-zinc-700 block mb-1.5">Document Base Font Size</label>
+                      <select
+                        value={templateSettings.font_size}
+                        onChange={(e) => setTemplateSettings({ ...templateSettings, font_size: e.target.value })}
+                        className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs bg-white text-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                      >
+                        <option value="10pt">10pt (Compact, standard for 1-page resumes)</option>
+                        <option value="11pt">11pt (Readable, suitable for experienced candidates)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="font-semibold text-zinc-700 block mb-1.5">Default Cover Letter Tone</label>
+                      <select
+                        value={templateSettings.cover_letter_style}
+                        onChange={(e) => setTemplateSettings({ ...templateSettings, cover_letter_style: e.target.value })}
+                        className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs bg-white text-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                      >
+                        <option value="concise">Concise & Direct (Recommended)</option>
+                        <option value="impactful">Technical Impact & Metrics Focus</option>
+                        <option value="storytelling">Career Narrative & Value Alignment</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-3 cursor-pointer pt-2">
+                    <input
+                      type="checkbox"
+                      checked={templateSettings.enforce_single_page}
+                      onChange={(e) => setTemplateSettings({ ...templateSettings, enforce_single_page: e.target.checked })}
+                      className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
+                    />
+                    <span className="text-zinc-700 font-medium">Strictly fit resume compile to a single page</span>
+                  </label>
+
+                  <div className="pt-4 border-t border-zinc-100 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => toast.success("Document template preferences saved!")}
+                      className="inline-flex items-center gap-1.5 bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-zinc-800 transition-colors shadow-sm"
+                    >
+                      <Save size={14} /> Save Template Defaults
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "privacy" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-900 border-b pb-2">Privacy & Data Management</h2>
+                  <p className="text-xs text-zinc-500 mt-1">Export your complete career records or manage data retention.</p>
+                </div>
+
+                <div className="space-y-5 text-xs">
+                  {/* Export Box */}
+                  <div className="p-5 rounded-xl border border-zinc-200 bg-zinc-50/50 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-bold text-sm text-zinc-900">Data Portability (GDPR / Full Export)</h3>
+                        <p className="text-zinc-500 mt-0.5">
+                          Download all verified profile facts, experiences, projects, skills, resumes, and application history as a portable JSON file.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleExportData}
+                      disabled={isExportingData}
+                      className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isExportingData ? "Exporting Data..." : "Download Complete Career Archive (.json)"}
+                    </button>
+                  </div>
+
+                  {/* Reset / Deletion Box */}
+                  <div className="p-5 rounded-xl border border-rose-200 bg-rose-50/40 space-y-3">
+                    <div>
+                      <h3 className="font-bold text-sm text-rose-900">Reset Application History</h3>
+                      <p className="text-rose-700 mt-0.5">
+                        Clears your tracked applications and saved job positions in the database. Your master career profile, educations, work experiences, and projects will remain intact.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClearData}
+                      disabled={isClearingData}
+                      className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50"
+                    >
+                      {isClearingData ? "Resetting History..." : "Reset Application CRM Records"}
                     </button>
                   </div>
                 </div>

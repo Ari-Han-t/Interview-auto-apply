@@ -61,7 +61,7 @@ def available_providers() -> List[str]:
         attrs = _KEY_ATTRS.get(name, ())
         if any(getattr(settings, a, "") for a in attrs):
             if canonical == "azure" and not (
-                settings.AZURE_OPENAI_ENDPOINT and settings.AZURE_OPENAI_DEPLOYMENT
+                getattr(settings, "AZURE_OPENAI_ENDPOINT", "") and getattr(settings, "AZURE_OPENAI_DEPLOYMENT", "")
             ):
                 continue
             result.append(canonical)
@@ -84,7 +84,12 @@ def create_provider(name: str) -> LLMProvider:
 
 
 class FallbackChain(LLMProvider):
-    """Tries each configured provider in order until one succeeds."""
+    """Tries each configured provider in order until one succeeds.
+
+    Client errors such as HTTP 400 are included in failover. Providers can
+    reject optional request features (for example structured JSON output),
+    while a compatible fallback such as Groq can still complete the request.
+    """
 
     def __init__(self, providers: List[LLMProvider], names: Optional[List[str]] = None):
         if not providers:
@@ -129,10 +134,10 @@ def _parse_chain(pref: Optional[str], exclude: Iterable[str]) -> List[str]:
     exclude_set = {normalize_provider(x) for x in exclude}
 
     ordered: List[str] = []
-    primary = normalize_provider(pref or settings.LLM_PROVIDER or "openrouter")
+    primary = normalize_provider(pref or getattr(settings, "LLM_PROVIDER", "openrouter") or "openrouter")
     ordered.append(primary)
 
-    fallbacks_raw = settings.LLM_FALLBACK_PROVIDERS or ""
+    fallbacks_raw = getattr(settings, "LLM_FALLBACK_PROVIDERS", "") or ""
     for part in fallbacks_raw.split(","):
         part = normalize_provider(part)
         if part and part not in ordered:

@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "supersecretkey_please_change_in_production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    # Local demo mode only. When enabled, protected routes use the first active
+    # user if no valid login cookie is present.
+    AUTH_DISABLED: bool = False
+    CORS_ORIGINS: str = ""
+    ALLOWED_ORIGIN_REGEX: str = r"^https?://(localhost|127\.0\.0\.1|.*\.onrender\.com|.*\.railway\.app|.*\.vercel\.app)(:\d+)?$"
 
     # --- LLM routing -------------------------------------------------------
     # Primary provider used by get_llm(): openrouter | openai | groq | gemini

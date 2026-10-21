@@ -96,7 +96,8 @@ class OpenAICompatibleProvider(LLMProvider):
             self.client = OpenAI(
                 base_url=self.base_url,
                 api_key=self.api_keys[self._key_index % len(self.api_keys)],
-                timeout=25.0,
+                timeout=120.0,
+                max_retries=2,
             )
         else:
             self.client = None
@@ -120,6 +121,19 @@ class OpenAICompatibleProvider(LLMProvider):
         text = str(err).lower()
         status = getattr(err, "status_code", None)
         return status == 429 or "429" in text or "rate limit" in text or "rate_limit" in text
+
+    def _is_transient(self, err: Exception) -> bool:
+        """Connection resets, timeouts and upstream 5xx — worth retrying."""
+        status = getattr(err, "status_code", None)
+        if status in (408, 409, 500, 502, 503, 504, 529):
+            return True
+        text = str(err).lower()
+        markers = (
+            "connection", "timeout", "timed out", "temporarily",
+            "unavailable", "overloaded", "econnreset", "econnrefused",
+            "remote end closed", "ssl", "proxy",
+        )
+        return any(m in text for m in markers)
 
     def _is_auth_error(self, err: Exception) -> bool:
         status = getattr(err, "status_code", None)
@@ -145,6 +159,8 @@ class OpenAICompatibleProvider(LLMProvider):
             )
 
         kwargs = self._merge_extra_body(kwargs)
+        if "max_tokens" not in kwargs and "max_completion_tokens" not in kwargs:
+            kwargs["max_tokens"] = 250
         attempts = max_retries * max(1, len(self.api_keys))
         last_err: Optional[Exception] = None
 
@@ -155,10 +171,25 @@ class OpenAICompatibleProvider(LLMProvider):
                 )
             except Exception as e:
                 last_err = e
+                # Check for OpenRouter / provider credit hint "can only afford X"
+                afford_m = re.search(r"can only afford (\d+)", str(e))
+                if afford_m:
+                    afforded = int(afford_m.group(1))
+                    adjusted = max(60, afforded - 20)
+                    logger.warning(
+                        "%s: credit limit hint received; adjusting max_tokens from %s to %d",
+                        self.provider_name, kwargs.get("max_tokens"), adjusted
+                    )
+                    kwargs["max_tokens"] = adjusted
+                    continue
                 if self._should_rotate(e) and self._rotate_key():
                     continue
-                if self._is_rate_limit(e) and attempt < attempts - 1:
+                if (self._is_rate_limit(e) or self._is_transient(e)) and attempt < attempts - 1:
                     time.sleep(min(5 * (attempt + 1), 15))
+                    logger.warning(
+                        "%s: transient error (%s); retrying attempt %d/%d",
+                        self.provider_name, e, attempt + 2, attempts,
+                    )
                     continue
                 logger.error("Error calling %s: %s", self.provider_name, e)
                 raise e
@@ -217,7 +248,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 return clean_and_parse_json(response.choices[0].message.content)
             except Exception as e:
                 last_err = e
-                if self._is_rate_limit(e) and attempt < attempts - 1:
+                if (self._is_rate_limit(e) or self._is_transient(e)) and attempt < attempts - 1:
                     time.sleep(5)
                     continue
                 logger.error("Error calling %s JSON: %s", self.provider_name, e)

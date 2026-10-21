@@ -12,7 +12,7 @@ def test_scraper():
     try:
         jobs = scrape_yc_jobs()
         print(f"Scraped {len(jobs)} jobs successfully!")
-        print(json.dumps(jobs, indent=2))
+        print(json.dumps(jobs, indent=2, default=str))
     except Exception as e:
         print(f"Error scraping YC jobs: {e}")
 

@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 config = types.ModuleType("app.core.config")
 config.settings = types.SimpleNamespace(
     DATABASE_URL="sqlite:///:memory:", SECRET_KEY="resume-autofill-unit-test-only",
-    ALGORITHM="HS256", ACCESS_TOKEN_EXPIRE_MINUTES=30,
+    ALGORITHM="HS256", ACCESS_TOKEN_EXPIRE_MINUTES=30, AUTH_DISABLED=False,
 )
 original_config = sys.modules.get("app.core.config")
 sys.modules["app.core.config"] = config

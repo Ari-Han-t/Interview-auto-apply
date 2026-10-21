@@ -18,6 +18,8 @@ def normalize_github_username(username: str) -> str:
     username = (username or "").strip()
     if username.startswith("http"):
         username = username.rstrip("/").split("/")[-1]
+    import re
+    username = re.sub(r"[^a-zA-Z0-9_\-]", "", username)
     return username
 
 

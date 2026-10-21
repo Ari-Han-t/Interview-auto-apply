@@ -16,6 +16,7 @@ class User(Base):
 
     profile = relationship("Profile", back_populates="user", uselist=False)
     user_profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    educations = relationship("CandidateEducation", back_populates="user", cascade="all, delete-orphan")
     experiences = relationship("CandidateExperience", back_populates="user", cascade="all, delete-orphan")
     projects = relationship("Project", back_populates="user", cascade="all, delete-orphan")
     user_skills = relationship("UserSkill", back_populates="user", cascade="all, delete-orphan")
@@ -23,5 +24,11 @@ class User(Base):
     capabilities = relationship("CandidateCapability", back_populates="user", uselist=False, cascade="all, delete-orphan")
     achievements = relationship("Achievement", back_populates="user", cascade="all, delete-orphan")
     courses = relationship("CourseCertification", back_populates="user", cascade="all, delete-orphan")
+    leadership = relationship("CandidateLeadership", back_populates="user", cascade="all, delete-orphan")
+    coursework_items = relationship("CandidateCoursework", back_populates="user", cascade="all, delete-orphan")
+    publications = relationship("CandidatePublication", back_populates="user", cascade="all, delete-orphan")
+    custom_sections = relationship("CandidateCustomSection", back_populates="user", cascade="all, delete-orphan")
+    resume_versions = relationship("ResumeVersion", back_populates="user", cascade="all, delete-orphan")
+    saved_jobs = relationship("UserSavedJob", back_populates="user", cascade="all, delete-orphan")
 
 

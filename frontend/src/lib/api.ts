@@ -1,4 +1,5 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const rawApiUrl = process.env.NEXT_PUBLIC_API_URL;
+const API_BASE = (rawApiUrl && !rawApiUrl.includes("8001")) ? rawApiUrl : "http://localhost:8000";
 
 export async function apiFetch<T = any>(
   path: string,
@@ -14,7 +15,7 @@ export async function apiFetch<T = any>(
   });
 
   if (res.status === 401) {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && window.location.pathname !== "/login") {
       window.location.href = "/login";
     }
     throw new Error("Unauthorized");
