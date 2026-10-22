@@ -38,7 +38,4 @@ services:
       - key: PORT
         value: "3000"
       - key: NEXT_PUBLIC_API_URL
-        fromService:
-          type: web
-          name: interview-autoapply-backend
-          property: host
+        value: "https://interview-autoapply-backend.onrender.com"
