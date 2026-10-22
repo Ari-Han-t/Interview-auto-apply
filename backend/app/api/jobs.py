@@ -110,11 +110,8 @@ def get_jobs(
     if prof and prof.skills_json:
         cand_skills.update(s.get("name", "").lower() for s in prof.skills_json if isinstance(s, dict))
 
-    is_cs_profile = any(k in degree_str for k in ["computer", "cs", "software", "information technology", "it", "engineering", "data science", "cyber"])
-    if not is_cs_profile:
-        tech_indicators = {"python", "javascript", "typescript", "c++", "java", "sql", "react", "html", "css", "docker", "fastapi", "linux", "git"}
-        if len(cand_skills.intersection(tech_indicators)) >= 2:
-            is_cs_profile = True
+    is_explicit_non_tech = any(k in degree_str for k in ["marketing", "sales", "social work", "accounting", "law", "fashion", "human resources", "nursing", "culinary"])
+    is_cs_profile = not is_explicit_non_tech
 
     # Natural Language / Keyword Search
     parsed_nl = {}

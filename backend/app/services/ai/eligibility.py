@@ -89,16 +89,8 @@ def evaluate_eligibility(
                 degree_str += f" {edu.get('degree', '')} {edu.get('field', '')} {edu.get('major', '')}"
     degree_str = degree_str.lower()
 
-    is_cs_profile = any(k in degree_str for k in ["computer", "cs", "software", "information technology", "it", "engineering", "data science", "cyber"])
-    if not is_cs_profile:
-        cand_skill_names = set()
-        if user_skills:
-            cand_skill_names.update(us.skill.name.lower() for us in user_skills if us.skill)
-        if profile and profile.skills_json:
-            cand_skill_names.update(s.get("name", "").lower() for s in profile.skills_json if isinstance(s, dict))
-        tech_indicators = {"python", "javascript", "typescript", "c++", "java", "sql", "react", "html", "css", "docker", "fastapi", "linux", "git"}
-        if len(cand_skill_names.intersection(tech_indicators)) >= 2:
-            is_cs_profile = True
+    is_explicit_non_tech = any(k in degree_str for k in ["marketing", "sales", "social work", "accounting", "law", "fashion", "human resources", "nursing", "culinary"])
+    is_cs_profile = not is_explicit_non_tech
 
     job = db.query(Job).filter(Job.id == job_id).first()
     if job and is_cs_profile:
