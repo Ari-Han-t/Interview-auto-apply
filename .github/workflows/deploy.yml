@@ -75,16 +75,16 @@ jobs:
     if: always()
 
     steps:
-      - name: Trigger Render Backend Deploy Hook
-        if: env.RENDER_DEPLOY_HOOK_BACKEND != ''
+      - name: Trigger Render Deploy Hook (Main / Backend)
         env:
-          RENDER_DEPLOY_HOOK_BACKEND: ${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK || secrets.RENDER_DEPLOY_HOOK_BACKEND }}
+        if: env.HOOK != ''
         run: |
-          curl -s -X POST "$RENDER_DEPLOY_HOOK_BACKEND"
+          curl -s -X POST "$HOOK"
 
       - name: Trigger Render Frontend Deploy Hook
-        if: env.RENDER_DEPLOY_HOOK_FRONTEND != ''
         env:
-          RENDER_DEPLOY_HOOK_FRONTEND: ${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}
+          HOOK_FRONTEND: ${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}
+        if: env.HOOK_FRONTEND != ''
         run: |
-          curl -s -X POST "$RENDER_DEPLOY_HOOK_FRONTEND"
+          curl -s -X POST "$HOOK_FRONTEND"
