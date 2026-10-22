@@ -85,6 +85,7 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
   
   const [job, setJob] = useState<Job | null>(null);
   const [isLoadingJob, setIsLoadingJob] = useState(true);
+  const [showFullDesc, setShowFullDesc] = useState(false);
 
   // Background analysis state
   const [appId, setAppId] = useState<number | null>(null);
@@ -1079,10 +1080,23 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
 
                 {/* Full Description Accordion */}
                 <div className="pt-2 border-t border-zinc-100">
-                  <h4 className="font-bold text-zinc-900 mb-1 text-xs">Job Description:</h4>
-                  <div className="text-xs text-zinc-650 leading-relaxed max-h-[160px] overflow-y-auto whitespace-pre-wrap p-2.5 bg-zinc-50/50 rounded-lg border border-zinc-150">
-                    {job.description}
+                  <div className="flex items-center justify-between mb-1">
+                    <h4 className="font-bold text-zinc-900 text-xs">Job Description:</h4>
+                    <button
+                      type="button"
+                      onClick={() => setShowFullDesc(!showFullDesc)}
+                      className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer"
+                    >
+                      {showFullDesc ? "Collapse" : "Show Full Description"}
+                    </button>
                   </div>
+                  {showFullDesc ? (
+                    <div className="text-xs text-zinc-650 leading-relaxed max-h-[220px] overflow-y-auto whitespace-pre-wrap p-2.5 bg-zinc-50/50 rounded-lg border border-zinc-150 mt-1">
+                      {job.description}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-zinc-400 italic">Description collapsed. Click to expand full text.</p>
+                  )}
                 </div>
               </div>
             ) : (

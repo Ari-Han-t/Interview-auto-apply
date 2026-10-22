@@ -88,6 +88,7 @@ export default function JobsPage() {
   const [matchResume, setMatchResume] = useState(true);
   const [showEligibleOnly, setShowEligibleOnly] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
 
   // Modals
   const [showSyncModal, setShowSyncModal] = useState(false);
@@ -616,16 +617,11 @@ export default function JobsPage() {
                       </div>
                     </div>
 
-                    {/* Brief description snippet */}
-                    <p className="text-xs text-zinc-600 line-clamp-2 mt-2 leading-relaxed">
-                      {job.description || "Structured job details cataloged."}
-                    </p>
-
-                    {/* Skills tags */}
-                    {((job.required_skills_json && job.required_skills_json.length > 0) ||
-                      (job.tech_stack_json && job.tech_stack_json.length > 0)) && (
-                      <div className="flex flex-wrap items-center gap-1.5 pt-2">
-                        {(job.required_skills_json || job.tech_stack_json || [])
+                    {/* Skills tags & Optional Description Toggle */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-2">
+                      {((job.required_skills_json && job.required_skills_json.length > 0) ||
+                        (job.tech_stack_json && job.tech_stack_json.length > 0)) && (
+                        (job.required_skills_json || job.tech_stack_json || [])
                           .slice(0, 6)
                           .map((skill, sIdx) => (
                             <span
@@ -634,7 +630,23 @@ export default function JobsPage() {
                             >
                               {skill}
                             </span>
-                          ))}
+                          ))
+                      )}
+                      {job.description && (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)}
+                          className="text-[11px] text-zinc-400 hover:text-zinc-700 font-medium ml-1 underline decoration-zinc-300"
+                        >
+                          {expandedJobId === job.id ? "Hide description" : "View description"}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Collapsed Description Drawer */}
+                    {expandedJobId === job.id && job.description && (
+                      <div className="mt-2.5 p-3 rounded-lg bg-zinc-50 border border-zinc-200/80 text-xs text-zinc-650 leading-relaxed whitespace-pre-wrap">
+                        {job.description}
                       </div>
                     )}
                   </div>
