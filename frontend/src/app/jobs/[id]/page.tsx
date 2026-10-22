@@ -35,6 +35,9 @@ import {
   CheckCheck,
   X,
   Plus,
+  Eye,
+  Code,
+  FileCode,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -105,6 +108,13 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
   const [showClDiffModal, setShowClDiffModal] = useState(false);
   const [diffTokens, setDiffTokens] = useState<any[]>([]);
   const [copiedCl, setCopiedCl] = useState(false);
+
+  // Tailored Resume Full-Page Hero state
+  const [resumeViewMode, setResumeViewMode] = useState<"pdf" | "latex">("pdf");
+  const [latexSource, setLatexSource] = useState<string>("");
+  const [isLoadingLatex, setIsLoadingLatex] = useState(false);
+  const [copiedTex, setCopiedTex] = useState(false);
+  const [pdfRefreshKey, setPdfRefreshKey] = useState(Date.now());
 
   // Company Research state
   const [researchData, setResearchData] = useState<any>(null);
@@ -470,6 +480,49 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
     }
   };
 
+  const fetchLatexSource = async () => {
+    const targetId = applicationId || appId;
+    if (!targetId) return;
+    setIsLoadingLatex(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      const res = await fetch(`${API_BASE}/api/v1/applications/${targetId}/resume.tex`, {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const text = await res.text();
+        setLatexSource(text);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingLatex(false);
+    }
+  };
+
+  const handleToggleViewMode = (mode: "pdf" | "latex") => {
+    setResumeViewMode(mode);
+    if (mode === "latex" && !latexSource) {
+      fetchLatexSource();
+    }
+  };
+
+  const handleCopyLatex = () => {
+    if (!latexSource) return;
+    navigator.clipboard.writeText(latexSource);
+    setCopiedTex(true);
+    toast.success("LaTeX source copied to clipboard!");
+    setTimeout(() => setCopiedTex(false), 2000);
+  };
+
+  const scrollToDetails = () => {
+    const el = document.getElementById("application-details");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
   return (
     <div className="space-y-6 h-full flex flex-col">
       {/* Header */}
@@ -523,8 +576,240 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
         </div>
       </div>
 
-      {/* Main Grid: Left Column (Job info + Instructions) | Right Column (Research, Cover Letter, Resume) */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 flex-1 items-start">
+      {/* ======================================================== */}
+      {/* HERO HIGHLIGHT: Full-Page Tailored Resume (LaTeX & PDF) */}
+      {/* ======================================================== */}
+      <section aria-label="Tailored Resume Highlight" className="bg-white rounded-2xl border border-zinc-200/90 shadow-lg overflow-hidden flex flex-col h-[82vh] min-h-[720px] max-h-[960px] transition-all">
+        {/* Top Control Toolbar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-b border-zinc-150 bg-zinc-50/80 backdrop-blur-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-indigo-600/10 text-indigo-700 flex items-center justify-center font-bold shadow-2xs">
+              <Layers size={19} className="text-indigo-600" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-zinc-900 tracking-tight">
+                  Tailored Resume (LaTeX &amp; PDF)
+                </h2>
+                {(applicationId || appId) ? (
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold flex items-center gap-1 shadow-2xs">
+                    <CheckCircle2 size={11} /> 100% ATS Optimized
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full bg-zinc-200/70 text-zinc-700 text-[10px] font-semibold">
+                    Target Role: {job?.title || "Software Engineer"}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-zinc-500 font-medium">
+                Single-column ATS format with quantified achievement metrics, targeted project highlights, and verified technical competencies.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* View Mode Switcher: PDF vs LaTeX Source */}
+            {(applicationId || appId) && (
+              <div className="inline-flex items-center p-0.5 bg-zinc-200/80 rounded-lg text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => handleToggleViewMode("pdf")}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md transition ${
+                    resumeViewMode === "pdf"
+                      ? "bg-white text-zinc-900 shadow-2xs"
+                      : "text-zinc-600 hover:text-zinc-900"
+                  }`}
+                >
+                  <Eye size={13} />
+                  <span>PDF Document</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleViewMode("latex")}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md transition ${
+                    resumeViewMode === "latex"
+                      ? "bg-white text-zinc-900 shadow-2xs"
+                      : "text-zinc-600 hover:text-zinc-900"
+                  }`}
+                >
+                  <Code size={13} />
+                  <span>LaTeX Source</span>
+                </button>
+              </div>
+            )}
+
+            <Link
+              href={`/resumes/modular?job_id=${id}${appId ? `&app_id=${appId}` : ""}`}
+              className="inline-flex items-center gap-1 text-xs text-indigo-700 hover:text-indigo-900 font-bold bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 transition shadow-2xs"
+            >
+              <Layers size={13} /> Open Modular Studio
+            </Link>
+
+            {(applicationId || appId) && (
+              <>
+                <a
+                  href={`${API_BASE}/api/v1/applications/${applicationId || appId}/resume.tex`}
+                  download={`resume_${job?.company || "tailored"}.tex`}
+                  className="inline-flex items-center gap-1 text-xs text-zinc-700 hover:text-zinc-900 font-semibold bg-white border border-zinc-200 hover:bg-zinc-50 px-3 py-1.5 rounded-lg transition shadow-2xs"
+                >
+                  <Download size={13} /> Source (.tex)
+                </a>
+                <a
+                  href={`${API_BASE}/api/v1/applications/${applicationId || appId}/resume.pdf`}
+                  download={`resume_${job?.company || "tailored"}.pdf`}
+                  target="_blank"
+                  className="inline-flex items-center gap-1 text-xs text-white bg-zinc-900 hover:bg-zinc-800 font-bold px-3.5 py-1.5 rounded-lg transition shadow-sm"
+                >
+                  <Download size={13} /> Download PDF
+                </a>
+              </>
+            )}
+
+            {/* Jump to Cover Letter & Details */}
+            <button
+              type="button"
+              onClick={scrollToDetails}
+              className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-semibold px-2.5 py-1.5 rounded-lg hover:bg-indigo-50/60 transition cursor-pointer"
+              title="Scroll down to Cover Letter Studio and Company Brief"
+            >
+              <span>Scroll to Cover Letter &amp; Details</span>
+              <ChevronDown size={14} className="animate-bounce" />
+            </button>
+          </div>
+        </div>
+
+        {/* Hero Workstation Canvas */}
+        <div className="flex-1 bg-zinc-100/70 p-3.5 relative overflow-hidden flex flex-col items-center justify-center">
+          {(applicationId || appId) ? (
+            resumeViewMode === "pdf" ? (
+              <div className="w-full h-full rounded-xl overflow-hidden shadow-md border border-zinc-200 bg-white">
+                <iframe
+                  src={`${API_BASE}/api/v1/applications/${applicationId || appId}/resume.pdf?t=${pdfRefreshKey}`}
+                  className="w-full h-full border-0"
+                  title="Tailored Resume Full-Page PDF Preview"
+                />
+              </div>
+            ) : (
+              <div className="w-full h-full bg-zinc-950 rounded-xl overflow-hidden border border-zinc-800 flex flex-col shadow-md">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900/90 text-xs text-zinc-400">
+                  <div className="flex items-center gap-2">
+                    <FileCode size={13} className="text-indigo-400" />
+                    <span className="font-mono text-zinc-300">resume.tex</span>
+                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">LaTeX • UTF-8</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyLatex}
+                    className="inline-flex items-center gap-1 text-zinc-300 hover:text-white px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 transition font-medium"
+                  >
+                    {copiedTex ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                    <span>{copiedTex ? "Copied!" : "Copy LaTeX"}</span>
+                  </button>
+                </div>
+                {isLoadingLatex ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-zinc-400 text-xs gap-2">
+                    <Loader2 size={24} className="animate-spin text-indigo-400" />
+                    <span>Loading LaTeX source code...</span>
+                  </div>
+                ) : (
+                  <pre className="flex-1 p-5 font-mono text-xs text-emerald-400/90 overflow-auto whitespace-pre leading-relaxed select-all">
+                    {latexSource || resumePreview || "% LaTeX source compiling..."}
+                  </pre>
+                )}
+              </div>
+            )
+          ) : (
+            /* Pre-generation Blueprint Canvas */
+            <div className="w-full h-full max-w-4xl bg-white rounded-xl shadow-md border border-zinc-200/90 p-8 flex flex-col justify-between relative overflow-hidden">
+              {/* Ghost Resume Template preview */}
+              <div className="space-y-6 opacity-30 filter blur-[0.4px] select-none pointer-events-none">
+                <div className="text-center border-b border-zinc-300 pb-4">
+                  <div className="h-6 w-48 bg-zinc-800 rounded mx-auto mb-2"></div>
+                  <div className="h-3 w-72 bg-zinc-400 rounded mx-auto mb-1"></div>
+                  <div className="h-3 w-96 bg-zinc-400 rounded mx-auto"></div>
+                </div>
+                <div>
+                  <div className="h-4 w-36 bg-zinc-700 rounded mb-2 border-b border-zinc-400 pb-1"></div>
+                  <div className="h-3 w-full bg-zinc-300 rounded mb-1"></div>
+                  <div className="h-3 w-11/12 bg-zinc-300 rounded mb-1"></div>
+                  <div className="h-3 w-4/5 bg-zinc-300 rounded"></div>
+                </div>
+                <div>
+                  <div className="h-4 w-44 bg-zinc-700 rounded mb-2 border-b border-zinc-400 pb-1"></div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <div className="h-3.5 w-48 bg-zinc-600 rounded"></div>
+                      <div className="h-3 w-24 bg-zinc-400 rounded"></div>
+                    </div>
+                    <div className="h-3 w-full bg-zinc-300 rounded"></div>
+                    <div className="h-3 w-11/12 bg-zinc-300 rounded"></div>
+                  </div>
+                </div>
+                <div>
+                  <div className="h-4 w-40 bg-zinc-700 rounded mb-2 border-b border-zinc-400 pb-1"></div>
+                  <div className="h-3 w-full bg-zinc-300 rounded mb-1"></div>
+                  <div className="h-3 w-3/4 bg-zinc-300 rounded"></div>
+                </div>
+              </div>
+
+              {/* Center High-Impact CTA Card */}
+              <div className="absolute inset-0 flex items-center justify-center p-6 bg-gradient-to-b from-white/70 via-white/92 to-white/98 backdrop-blur-[2px]">
+                <div className="max-w-md w-full bg-white border border-zinc-200/90 rounded-2xl p-6 shadow-2xl text-center space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center mx-auto shadow-inner">
+                    <Sparkles size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-900 tracking-tight">
+                      Generate Tailored Resume for this Role
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
+                      Our modular ATS engine will analyze <strong className="text-zinc-800">{job?.title || "the role"}</strong> at <strong className="text-zinc-800">{job?.company || "the company"}</strong>, select your highest-impact projects, inject quantified metrics (+40% throughput, 99.9% uptime), and compile a publication-grade LaTeX PDF.
+                    </p>
+                  </div>
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={handleAnalyseAndApply}
+                      disabled={Boolean(isLoadingJob || (job && job.eligible === false) || isGenerating)}
+                      className="w-full inline-flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold text-xs py-3 px-5 rounded-xl transition shadow-md disabled:opacity-50 cursor-pointer"
+                    >
+                      <Sparkles size={14} className="text-indigo-400" />
+                      <span>{isGenerating ? "Analyzing & Compiling Resume..." : "Analyse & Generate Tailored Resume (1-Click)"}</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-center gap-4 text-[11px] text-zinc-400 pt-1">
+                    <span className="flex items-center gap-1">✓ Single-Column ATS</span>
+                    <span className="flex items-center gap-1">✓ pdflatex Compiled</span>
+                    <span className="flex items-center gap-1">✓ Zero Keyword Stuffing</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Banner with Smooth Scroll Link */}
+        <div className="px-5 py-2.5 border-t border-zinc-150 bg-white flex items-center justify-between text-xs text-zinc-500">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span>Targeting: <strong>{job?.company}</strong> ({job?.location || "Remote"})</span>
+          </div>
+          <button
+            type="button"
+            onClick={scrollToDetails}
+            className="inline-flex items-center gap-1.5 font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer transition hover:translate-y-0.5"
+          >
+            <span>Scroll down for Cover Letter Studio, Company Intelligence &amp; Job Context</span>
+            <ChevronDown size={14} />
+          </button>
+        </div>
+      </section>
+
+      {/* ======================================================== */}
+      {/* LOWER SECTION: Cover Letter Studio, Research & Job Context */}
+      {/* ======================================================== */}
+      {/* Main Grid: Left Column (Job info + Instructions) | Right Column (Research, Cover Letter) */}
+      <div id="application-details" className="grid grid-cols-1 xl:grid-cols-12 gap-6 flex-1 items-start scroll-mt-6">
         {/* Left Column (Job details, context inputs, progress) */}
         <div className="xl:col-span-5 space-y-6">
           {/* Instructions Input */}
@@ -1027,55 +1312,7 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
             </div>
           </div>
 
-          {/* SECTION 3: Tailored Resume (LaTeX) */}
-          <div className="bg-white rounded-xl border border-zinc-200 shadow-sm p-5 space-y-4">
-            <div className="flex justify-between items-center border-b border-zinc-150 pb-3">
-              <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2">
-                <Layers size={17} className="text-indigo-600" />
-                Tailored Resume (LaTeX &amp; PDF)
-              </h3>
-                <div className="flex items-center gap-3">
-                  <Link
-                    href={`/resumes/modular?job_id=${id}${appId ? `&app_id=${appId}` : ""}`}
-                    className="inline-flex items-center gap-1 text-xs text-indigo-700 hover:text-indigo-900 font-bold bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded border border-indigo-200 transition"
-                  >
-                    <Layers size={12} /> Open Modular Studio
-                  </Link>
-                  {(applicationId || appId) && (
-                    <>
-                      <a
-                        href={`${API_BASE}/api/v1/applications/${applicationId || appId}/resume.tex`}
-                        download={`resume_${job?.company || "tailored"}.tex`}
-                        className="inline-flex items-center gap-1 text-xs text-zinc-600 hover:text-zinc-900 font-semibold"
-                      >
-                        <Download size={12} /> Source (.tex)
-                      </a>
-                      <a
-                        href={`${API_BASE}/api/v1/applications/${applicationId || appId}/resume.pdf`}
-                        download={`resume_${job?.company || "tailored"}.pdf`}
-                        target="_blank"
-                        className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-bold"
-                      >
-                        <Download size={12} /> Download PDF
-                      </a>
-                    </>
-                  )}
-                </div>
-            </div>
-            <div className="bg-zinc-50 rounded-lg border border-zinc-200 h-[260px] w-full overflow-hidden">
-              {(applicationId || appId) ? (
-                <iframe
-                  src={`${API_BASE}/api/v1/applications/${applicationId || appId}/resume.pdf`}
-                  className="w-full h-full"
-                  title="Resume PDF Preview"
-                />
-              ) : (
-                <pre className="p-4 text-[10px] overflow-x-auto whitespace-pre-wrap h-full overflow-y-auto text-zinc-600 font-mono">
-                  {resumePreview || "No resume text generated yet. Click Analyse & Apply to tailor resume."}
-                </pre>
-              )}
-            </div>
-          </div>
+          {/* (Tailored Resume has been elevated to the Full-Page Hero Workstation at the top) */}
         </div>
       </div>
 
