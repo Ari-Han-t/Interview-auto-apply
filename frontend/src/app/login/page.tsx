@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { API_BASE } from "@/lib/api";
+import { API_BASE, resolveApiBase } from "@/lib/api";
 import { Sparkles } from "lucide-react";
 
 export default function Login() {
@@ -17,9 +17,10 @@ export default function Login() {
     setStatus("");
 
     try {
+      const apiEndpoint = resolveApiBase();
       if (isRegister) {
         // Register first
-        const regRes = await fetch(`${API_BASE}/api/v1/auth/register`, {
+        const regRes = await fetch(`${apiEndpoint}/api/v1/auth/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password }),
@@ -38,7 +39,7 @@ export default function Login() {
       formData.append("username", email);
       formData.append("password", password);
 
-      const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+      const res = await fetch(`${apiEndpoint}/api/v1/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: formData.toString(),
@@ -48,11 +49,12 @@ export default function Login() {
       if (res.ok) {
         window.location.href = "/";
       } else {
-        const errorData = await res.json();
+        const errorData = await res.json().catch(() => ({ detail: "Login failed" }));
         setStatus(errorData.detail || "Login failed");
       }
-    } catch (err) {
-      setStatus("Network error — is the backend running?");
+    } catch (err: any) {
+      console.error("Login request failed:", err);
+      setStatus(err?.message ? `Network error (${err.message}) — check backend connectivity` : "Network error — is the backend running?");
     } finally {
       setIsLoading(false);
     }

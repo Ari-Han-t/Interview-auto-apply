@@ -9,6 +9,10 @@ if [ -n "$DATABASE_URL" ]; then
     alembic upgrade head || echo "Alembic migrations completed or skipped."
 fi
 
+# Seed demo user Maya Patel
+echo "Seeding demo user and CRM baseline..."
+python seed_example_user.py || echo "Seed step completed or skipped."
+
 # Execute CMD passed to container or default to uvicorn on $PORT
 if [ $# -gt 0 ]; then
     exec "$@"

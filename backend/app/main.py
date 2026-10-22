@@ -156,3 +156,12 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.on_event("startup")
+def startup_event():
+    try:
+        from seed_example_user import seed_example_user
+        seed_example_user()
+    except Exception as _seed_err:
+        pass

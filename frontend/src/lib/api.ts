@@ -1,11 +1,31 @@
-const rawApiUrl = process.env.NEXT_PUBLIC_API_URL;
-const API_BASE = (rawApiUrl && !rawApiUrl.includes("8001")) ? rawApiUrl : "http://localhost:8000";
+export function resolveApiBase(): string {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    // When running on Render domain (*.onrender.com)
+    if (host.includes("onrender.com")) {
+      return "https://interview-autoapply-backend.onrender.com";
+    }
+    // When running on any other remote non-localhost domain
+    if (host !== "localhost" && host !== "127.0.0.1") {
+      const envUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (envUrl && !envUrl.includes("localhost")) {
+        return envUrl;
+      }
+      return "https://interview-autoapply-backend.onrender.com";
+    }
+  }
+  const rawApiUrl = process.env.NEXT_PUBLIC_API_URL;
+  return (rawApiUrl && !rawApiUrl.includes("8001")) ? rawApiUrl : "http://localhost:8000";
+}
+
+const API_BASE = resolveApiBase();
 
 export async function apiFetch<T = any>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE}${path}`;
+  const base = resolveApiBase();
+  const url = `${base}${path}`;
   const res = await fetch(url, {
     credentials: "include",
     ...options,
