@@ -115,6 +115,8 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
   const [isLoadingLatex, setIsLoadingLatex] = useState(false);
   const [copiedTex, setCopiedTex] = useState(false);
   const [pdfRefreshKey, setPdfRefreshKey] = useState(Date.now());
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [isDownloadingTex, setIsDownloadingTex] = useState(false);
 
   // Company Research state
   const [researchData, setResearchData] = useState<any>(null);
@@ -271,6 +273,8 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
           setApplicationId(appId);
           setIsGenerating(false);
           setStatusText("");
+          setPdfRefreshKey(Date.now());
+          fetchLatexSource();
           fetchJobCoverLetter();
           fetchJobCompanyResearch();
         }
@@ -318,8 +322,9 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
 
   const handleAnalyseAndApply = async () => {
     if (job && job.eligible === false) {
-      toast.error(`Cannot generate materials: ${job.rejection_reason}`);
-      return;
+      toast(`Note: Role was flagged with eligibility considerations (${job.rejection_reason || "Check qualifications"}). Tailoring resume anyway...`, {
+        icon: "ℹ️",
+      });
     }
     await handleStartAnalysis();
   };
@@ -501,6 +506,74 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
     }
   };
 
+  const handleDownloadPdf = async () => {
+    const targetId = applicationId || appId;
+    if (!targetId) {
+      toast.error("Resume has not been generated yet.");
+      return;
+    }
+    setIsDownloadingPdf(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      const res = await fetch(`${API_BASE}/api/v1/applications/${targetId}/resume.pdf`, {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.detail || `Download failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `resume_${job?.company || "tailored"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Downloaded tailored resume PDF!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to download PDF");
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
+  const handleDownloadTex = async () => {
+    const targetId = applicationId || appId;
+    if (!targetId) {
+      toast.error("Resume has not been generated yet.");
+      return;
+    }
+    setIsDownloadingTex(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      const res = await fetch(`${API_BASE}/api/v1/applications/${targetId}/resume.tex`, {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.detail || `Download failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `resume_${job?.company || "tailored"}.tex`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Downloaded LaTeX source (.tex)!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to download LaTeX source");
+    } finally {
+      setIsDownloadingTex(false);
+    }
+  };
+
   const handleToggleViewMode = (mode: "pdf" | "latex") => {
     setResumeViewMode(mode);
     if (mode === "latex" && !latexSource) {
@@ -535,20 +608,52 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
             <ArrowLeft size={18} />
           </Link>
           <div>
-            <h1 className="text-2xl font-semibold text-zinc-900 tracking-tight">Tailoring Room</h1>
-            <p className="text-sm text-zinc-500">
-              {job ? `${job.title} at ${job.company}` : `Job #${id}`}
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-semibold text-zinc-900 tracking-tight">Tailoring Room</h1>
+              {job && (job.application_url || job.url) && (
+                <a
+                  href={job.application_url || job.url || "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition shadow-2xs hover:shadow-xs"
+                  title="Open original job posting in a new window"
+                >
+                  <span>View Original Job Posting</span>
+                  <ExternalLink size={13} />
+                </a>
+              )}
+            </div>
+            <p className="text-sm text-zinc-500 flex items-center gap-2 mt-0.5">
+              <span>{job ? `${job.title} at ${job.company}` : `Job #${id}`}</span>
+              {job?.location && (
+                <>
+                  <span className="text-zinc-300">•</span>
+                  <span className="text-xs text-zinc-400">{job.location}</span>
+                </>
+              )}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2.5">
           <Link
             href={`/resumes/modular?job_id=${id}${appId ? `&app_id=${appId}` : ""}`}
-            className="inline-flex items-center gap-1.5 bg-white border border-zinc-200 text-zinc-800 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-zinc-50 transition-colors shadow-2xs"
+            className="inline-flex items-center gap-1.5 bg-white border border-zinc-200 text-zinc-800 px-3.5 py-2 rounded-lg text-sm font-semibold hover:bg-zinc-50 transition-colors shadow-2xs"
           >
             <Layers size={15} className="text-indigo-600" />
             <span>Modular Studio</span>
           </Link>
+          {generated && (
+            <button
+              type="button"
+              onClick={handleAnalyseAndApply}
+              disabled={isGenerating || appStatus === "generating"}
+              className="inline-flex items-center gap-1.5 bg-white border border-zinc-200 text-zinc-800 hover:text-zinc-950 px-3.5 py-2 rounded-lg text-sm font-semibold hover:bg-zinc-50 disabled:opacity-50 transition-colors shadow-2xs cursor-pointer"
+              title="Re-run AI tailoring for this job"
+            >
+              <RefreshCw size={14} className={isGenerating ? "animate-spin text-indigo-600" : "text-zinc-500"} />
+              <span>{isGenerating ? "Tailoring..." : "Re-tailor Resume"}</span>
+            </button>
+          )}
           {appStatus === "generating" ? (
             <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 text-indigo-700 px-4 py-2 rounded-lg text-sm font-medium">
               <Loader2 size={16} className="animate-spin" />
@@ -566,11 +671,11 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
           ) : (
             <button
               onClick={handleAnalyseAndApply}
-              disabled={Boolean(isLoadingJob || (job && job.eligible === false))}
-              className="inline-flex items-center gap-1.5 bg-zinc-900 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-zinc-800 disabled:opacity-50 transition-colors shadow-md"
+              disabled={Boolean(isLoadingJob || isGenerating)}
+              className="inline-flex items-center gap-1.5 bg-zinc-900 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-zinc-800 disabled:opacity-50 transition-colors shadow-md cursor-pointer"
             >
               <Sparkles size={14} />
-              Analyse & Apply (Concurrent)
+              {isGenerating ? "Analyzing..." : "Analyse & Apply (Concurrent)"}
             </button>
           )}
         </div>
@@ -645,23 +750,51 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
               <Layers size={13} /> Open Modular Studio
             </Link>
 
+            {job && (job.application_url || job.url) && (
+              <a
+                href={job.application_url || job.url || "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-zinc-700 hover:text-indigo-600 font-semibold bg-white border border-zinc-200 hover:bg-zinc-50 px-3 py-1.5 rounded-lg transition shadow-2xs"
+                title="Open original job posting"
+              >
+                <ExternalLink size={13} className="text-zinc-500" />
+                <span>Job Link ↗</span>
+              </a>
+            )}
+
             {(applicationId || appId) && (
               <>
-                <a
-                  href={`${API_BASE}/api/v1/applications/${applicationId || appId}/resume.tex`}
-                  download={`resume_${job?.company || "tailored"}.tex`}
-                  className="inline-flex items-center gap-1 text-xs text-zinc-700 hover:text-zinc-900 font-semibold bg-white border border-zinc-200 hover:bg-zinc-50 px-3 py-1.5 rounded-lg transition shadow-2xs"
+                <button
+                  type="button"
+                  onClick={handleAnalyseAndApply}
+                  disabled={isGenerating || appStatus === "generating"}
+                  className="inline-flex items-center gap-1 text-xs text-zinc-700 hover:text-zinc-900 font-semibold bg-white border border-zinc-200 hover:bg-zinc-50 px-3 py-1.5 rounded-lg transition shadow-2xs disabled:opacity-50 cursor-pointer"
+                  title="Re-tailor resume with fresh directives"
                 >
-                  <Download size={13} /> Source (.tex)
-                </a>
-                <a
-                  href={`${API_BASE}/api/v1/applications/${applicationId || appId}/resume.pdf`}
-                  download={`resume_${job?.company || "tailored"}.pdf`}
-                  target="_blank"
-                  className="inline-flex items-center gap-1 text-xs text-white bg-zinc-900 hover:bg-zinc-800 font-bold px-3.5 py-1.5 rounded-lg transition shadow-sm"
+                  <RefreshCw size={13} className={isGenerating ? "animate-spin text-indigo-600" : "text-zinc-500"} />
+                  <span>{isGenerating ? "Tailoring..." : "Re-tailor"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadTex}
+                  disabled={isDownloadingTex}
+                  className="inline-flex items-center gap-1 text-xs text-zinc-700 hover:text-zinc-900 font-semibold bg-white border border-zinc-200 hover:bg-zinc-50 px-3 py-1.5 rounded-lg transition shadow-2xs disabled:opacity-50 cursor-pointer"
+                  title="Download LaTeX resume source file (.tex)"
                 >
-                  <Download size={13} /> Download PDF
-                </a>
+                  {isDownloadingTex ? <Loader2 size={13} className="animate-spin text-zinc-500" /> : <Download size={13} />}
+                  <span>Source (.tex)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadPdf}
+                  disabled={isDownloadingPdf}
+                  className="inline-flex items-center gap-1.5 text-xs text-white bg-zinc-900 hover:bg-zinc-800 font-bold px-3.5 py-1.5 rounded-lg transition shadow-sm disabled:opacity-50 cursor-pointer"
+                  title="Download publication-grade ATS PDF"
+                >
+                  {isDownloadingPdf ? <Loader2 size={13} className="animate-spin text-white" /> : <Download size={13} />}
+                  <span>Download PDF</span>
+                </button>
               </>
             )}
 
@@ -684,7 +817,11 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
             resumeViewMode === "pdf" ? (
               <div className="w-full h-full rounded-xl overflow-hidden shadow-md border border-zinc-200 bg-white">
                 <iframe
-                  src={`${API_BASE}/api/v1/applications/${applicationId || appId}/resume.pdf?t=${pdfRefreshKey}`}
+                  src={`${API_BASE}/api/v1/applications/${applicationId || appId}/resume.pdf?t=${pdfRefreshKey}${
+                    typeof window !== "undefined" && localStorage.getItem("access_token")
+                      ? `&token=${encodeURIComponent(localStorage.getItem("access_token") || "")}`
+                      : ""
+                  }`}
                   className="w-full h-full border-0"
                   title="Tailored Resume Full-Page PDF Preview"
                 />
@@ -770,7 +907,7 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
                     <button
                       type="button"
                       onClick={handleAnalyseAndApply}
-                      disabled={Boolean(isLoadingJob || (job && job.eligible === false) || isGenerating)}
+                      disabled={Boolean(isLoadingJob || isGenerating)}
                       className="w-full inline-flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold text-xs py-3 px-5 rounded-xl transition shadow-md disabled:opacity-50 cursor-pointer"
                     >
                       <Sparkles size={14} className="text-indigo-400" />
@@ -793,6 +930,21 @@ export default function JobTailoringRoom({ params }: { params: Promise<{ id: str
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
             <span>Targeting: <strong>{job?.company}</strong> ({job?.location || "Remote"})</span>
+            {job && (job.application_url || job.url) && (
+              <>
+                <span className="text-zinc-300">•</span>
+                <a
+                  href={job.application_url || job.url || "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-semibold hover:underline"
+                  title="Open original job posting"
+                >
+                  <span>Job Posting URL</span>
+                  <ExternalLink size={11} />
+                </a>
+              </>
+            )}
           </div>
           <button
             type="button"

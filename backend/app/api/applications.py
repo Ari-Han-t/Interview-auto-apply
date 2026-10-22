@@ -130,9 +130,8 @@ def initialize_application(
         # Update instructions on re-run (including clearing if empty string sent)
         if request is not None:
             app.user_instructions = user_instructions or None
-        # Reset status if it's not already complete
-        if app.status not in ["generated", "applied", "interview", "offer", "rejected"]:
-            app.status = "generating"
+        app.status = "generating"
+        app.next_action = "Analyzing job requirements and tailoring resume..."
         db.commit()
 
     # Reset/Initialize progress
@@ -507,24 +506,54 @@ def get_application_resume_pdf(
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
         
-    if not application.resume_version_url:
-        raise HTTPException(status_code=404, detail="No resume generated for this application")
-        
     import os
+    from app.services.pdf_exporter import compile_latex_to_pdf, export_text_to_pdf
     pdf_path = application.resume_version_url
-    if not os.path.exists(pdf_path):
-        raise HTTPException(status_code=404, detail="File not found on disk")
-        
-    # If the file saved is a .tex file, compile/convert it to PDF on the fly for preview
-    if pdf_path.endswith(".tex"):
-        from app.services.pdf_exporter import compile_latex_to_pdf
-        with open(pdf_path, "r", encoding="utf-8") as f:
-            tex_content = f.read()
-        pdf_path = compile_latex_to_pdf(tex_content, os.path.basename(pdf_path).replace(".tex", ".pdf"), os.path.dirname(pdf_path))
-        application.resume_version_url = pdf_path
+
+    # If pdf_path exists on disk
+    if pdf_path and os.path.exists(pdf_path):
+        if pdf_path.endswith(".tex"):
+            with open(pdf_path, "r", encoding="utf-8") as f:
+                tex_content = f.read()
+            compiled = compile_latex_to_pdf(tex_content, os.path.basename(pdf_path).replace(".tex", ".pdf"), os.path.dirname(pdf_path))
+            application.resume_version_url = compiled
+            db.commit()
+            pdf_path = compiled
+        return FileResponse(path=pdf_path, filename=os.path.basename(pdf_path), media_type="application/pdf")
+
+    # If companion .tex exists on disk
+    if pdf_path:
+        tex_path = pdf_path.replace(".pdf", ".tex")
+        if os.path.exists(tex_path):
+            with open(tex_path, "r", encoding="utf-8") as f:
+                tex_content = f.read()
+            compiled = compile_latex_to_pdf(tex_content, os.path.basename(pdf_path), os.path.dirname(pdf_path))
+            application.resume_version_url = compiled
+            db.commit()
+            return FileResponse(path=compiled, filename=os.path.basename(compiled), media_type="application/pdf")
+
+    # Fallback to Profile latex_template or profile data
+    profile = db.query(Profile).filter(Profile.user_id == current_user.id).first()
+    output_dir = f"data/applications/{current_user.id}"
+    os.makedirs(output_dir, exist_ok=True)
+    out_filename = f"application_{application_id}_resume.pdf"
+    
+    if profile and profile.latex_template:
+        compiled = compile_latex_to_pdf(profile.latex_template, out_filename, output_dir)
+        application.resume_version_url = compiled
         db.commit()
+        return FileResponse(path=compiled, filename=out_filename, media_type="application/pdf")
         
-    return FileResponse(path=pdf_path, filename=os.path.basename(pdf_path), media_type="application/pdf")
+    if profile:
+        from app.services.ai.profile_builder import build_profile_text
+        profile_text = build_profile_text(current_user.id, db)
+        if profile_text:
+            compiled = export_text_to_pdf(profile_text, out_filename, output_dir)
+            application.resume_version_url = compiled
+            db.commit()
+            return FileResponse(path=compiled, filename=out_filename, media_type="application/pdf")
+
+    raise HTTPException(status_code=404, detail="No resume generated for this application yet. Please click Analyse & Apply.")
 
 @router.get("/{application_id}/resume.tex")
 def get_application_resume_tex(
@@ -555,7 +584,28 @@ def get_application_resume_tex(
             f.write(profile.latex_template)
         return FileResponse(path=temp_tex, filename=f"resume_{application_id}.tex", media_type="application/x-tex")
         
-    raise HTTPException(status_code=404, detail="LaTeX resume source not found")
+    # Generate fallback basic LaTeX from profile text
+    from app.services.ai.profile_builder import build_profile_text
+    profile_text = build_profile_text(current_user.id, db) if profile else ""
+    user_name = current_user.email.split("@")[0].replace(".", " ").title()
+    fallback_tex = (
+        "\\documentclass[letterpaper,10pt]{article}\n"
+        "\\usepackage[utf8]{inputenc}\n"
+        "\\usepackage[margin=0.75in]{geometry}\n"
+        "\\begin{document}\n"
+        f"\\textbf{{\\Large {user_name}}}\\\\\n"
+        f"Email: {current_user.email}\\\\\n"
+        "\\hrulefill\n\n"
+        "\\section*{Profile & Experience}\n"
+        f"{profile_text or 'Software Engineer profile'}\n"
+        "\\end{document}\n"
+    )
+    import tempfile
+    temp_dir = tempfile.gettempdir()
+    temp_tex = os.path.join(temp_dir, f"resume_{application_id}.tex")
+    with open(temp_tex, "w", encoding="utf-8") as f:
+        f.write(fallback_tex)
+    return FileResponse(path=temp_tex, filename=f"resume_{application_id}.tex", media_type="application/x-tex")
 
 
 # ==============================================================================

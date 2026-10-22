@@ -28,6 +28,14 @@ def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db: 
         elif cookie_token:
             token = cookie_token
 
+    # Check query parameter token fallback (e.g. for iframes, window.open, and direct downloads)
+    if not token:
+        query_token = request.query_params.get("token")
+        if query_token and query_token.startswith("Bearer "):
+            token = query_token.split(" ")[1]
+        elif query_token:
+            token = query_token
+
     if not token and getattr(security.settings, "AUTH_DISABLED", False):
         demo_user = db.query(User).filter(User.is_active.is_(True)).order_by(User.id.asc()).first()
         if demo_user is not None:
