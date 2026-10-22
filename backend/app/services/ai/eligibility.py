@@ -69,8 +69,71 @@ def evaluate_eligibility(
     preferences = db.query(UserPreference).filter(UserPreference.user_id == user_id).first()
     experiences = db.query(CandidateExperience).filter(CandidateExperience.user_id == user_id).all()
 
+    # 2.5 Check Domain & Role Compatibility (e.g. CS profile vs non-tech marketing/sales/fundraising)
+    from app.models.profile import Profile
+    from app.models.candidate import UserSkill
+    from app.models.job import Job
+    import re
+
+    profile = db.query(Profile).filter(Profile.user_id == user_id).first()
+    user_skills = db.query(UserSkill).filter(UserSkill.user_id == user_id).all()
+
+    degree_str = ""
+    if user_profile and user_profile.degree:
+        degree_str += f" {user_profile.degree}"
+    if user_profile and user_profile.specialization:
+        degree_str += f" {user_profile.specialization}"
+    if profile and profile.education_json:
+        for edu in profile.education_json:
+            if isinstance(edu, dict):
+                degree_str += f" {edu.get('degree', '')} {edu.get('field', '')} {edu.get('major', '')}"
+    degree_str = degree_str.lower()
+
+    is_cs_profile = any(k in degree_str for k in ["computer", "cs", "software", "information technology", "it", "engineering", "data science", "cyber"])
+    if not is_cs_profile:
+        cand_skill_names = set()
+        if user_skills:
+            cand_skill_names.update(us.skill.name.lower() for us in user_skills if us.skill)
+        if profile and profile.skills_json:
+            cand_skill_names.update(s.get("name", "").lower() for s in profile.skills_json if isinstance(s, dict))
+        tech_indicators = {"python", "javascript", "typescript", "c++", "java", "sql", "react", "html", "css", "docker", "fastapi", "linux", "git"}
+        if len(cand_skill_names.intersection(tech_indicators)) >= 2:
+            is_cs_profile = True
+
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if job and is_cs_profile:
+        title_lower = (job.title or "").lower()
+        non_tech_terms = [
+            "marketing", "fundraising", "volunteering", "social work", 
+            "graphic design", "video edit", "video editor", "content writer", "copywriter", "copywriting",
+            "telesales", "telecaller", "telefondienst", "cold calling", "insurance agent", 
+            "community buzz", "social media", "reels creation", "youtube manager",
+            "business development", "sales", "account manager", "client advisor", "client success",
+            "customer service", "customer support", "human resources", "hr", "recruitment", 
+            "talent acquisition", "administrative", "operations & marketing", "e-commerce operations", 
+            "head of operations", "law/legal", "legal", "accounting", "chartered accountancy", 
+            "tax", "audit", "investment banker", "investment advisory", "forex", "trading", 
+            "credit risk", "risk analyst", "fashion design", "art director", "mecánico", "automotriz",
+            "business consultant", "solutions consultant", "life sciences", "academic dean",
+            "transport planner", "payment integrity", "strategist", "merchandising"
+        ]
+        tech_whitelist = [
+            "software", "developer", "engineer", "backend", "frontend", "full stack", "fullstack",
+            "data", "devops", "cloud", "qa", "machine learning", "ai", "security", "systems", "python"
+        ]
+        has_non_tech = any(re.search(r'\b' + re.escape(term) + r'\b', title_lower) for term in non_tech_terms)
+        has_tech_whitelist = any(re.search(r'\b' + re.escape(term) + r'\b', title_lower) for term in tech_whitelist)
+
+        if has_non_tech and not has_tech_whitelist:
+            matched_terms = [t for t in non_tech_terms if re.search(r'\b' + re.escape(t) + r'\b', title_lower)]
+            domain_name = matched_terms[0].title() if matched_terms else "Marketing/Non-Tech"
+            return {
+                "eligible": False,
+                "reason": f"Role '{job.title}' is in {domain_name}, which does not match your Computer Science & Software Engineering resume."
+            }
+
     # If the user has not set up their profile, return eligible with warning to let them complete profile
-    if not user_profile:
+    if not user_profile and not profile:
         return {"eligible": True, "reason": "Passed eligibility (Please set up your profile for hard filtering)"}
 
     # 3. Calculate candidate's total experience in months and years

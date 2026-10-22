@@ -49,12 +49,30 @@ def get_jobs(
     source: Optional[str] = Query("all", description="Specific source or all"),
     saved_only: bool = Query(False, description="Filter to jobs saved by current user"),
     exclude_expired: bool = Query(True, description="Filter out expired jobs"),
+    match_profile: bool = Query(True, description="Filter/prioritize jobs matching candidate's resume/field of study"),
+    eligible_only: bool = Query(False, description="Filter to jobs where candidate meets eligibility criteria"),
     sort_by: str = Query("newest", description="newest, match_score, compensation, deadline"),
     skip: int = 0, 
     limit: int = 50, 
     current_user: User = Depends(get_current_user), 
     db: Session = Depends(get_db)
 ):
+    # Normalize FastAPI Query parameters in case called programmatically
+    q = q if isinstance(q, str) else None
+    skills = skills if isinstance(skills, str) else None
+    company = company if isinstance(company, str) else None
+    location = location if isinstance(location, str) else None
+    work_arrangement = work_arrangement if isinstance(work_arrangement, str) else "all"
+    job_type = job_type if isinstance(job_type, str) else "all"
+    source = source if isinstance(source, str) else "all"
+    sort_by = sort_by if isinstance(sort_by, str) else "newest"
+    min_compensation = min_compensation if isinstance(min_compensation, (int, float)) else None
+    graduation_year = graduation_year if isinstance(graduation_year, str) else None
+    saved_only = bool(saved_only) if not hasattr(saved_only, "default") else False
+    exclude_expired = bool(exclude_expired) if not hasattr(exclude_expired, "default") else True
+    match_profile = bool(match_profile) if not hasattr(match_profile, "default") else True
+    eligible_only = bool(eligible_only) if not hasattr(eligible_only, "default") else False
+
     query = db.query(Job)
 
     # Saved jobs filtering
@@ -67,6 +85,36 @@ def get_jobs(
     # Expired filter
     if exclude_expired:
         query = query.filter(Job.is_expired == False)
+
+    # Candidate profile context detection for smart matching
+    from app.models.candidate import UserProfile, UserPreference, UserSkill
+    user_profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
+    user_pref = db.query(UserPreference).filter(UserPreference.user_id == current_user.id).first()
+    prof = db.query(Profile).filter(Profile.user_id == current_user.id).first()
+    user_skills = db.query(UserSkill).filter(UserSkill.user_id == current_user.id).all()
+
+    degree_str = ""
+    if user_profile and user_profile.degree:
+        degree_str += f" {user_profile.degree}"
+    if user_profile and user_profile.specialization:
+        degree_str += f" {user_profile.specialization}"
+    if prof and prof.education_json:
+        for edu in prof.education_json:
+            if isinstance(edu, dict):
+                degree_str += f" {edu.get('degree', '')} {edu.get('field', '')} {edu.get('major', '')}"
+    degree_str = degree_str.lower()
+
+    cand_skills = set()
+    if user_skills:
+        cand_skills.update(us.skill.name.lower() for us in user_skills if us.skill)
+    if prof and prof.skills_json:
+        cand_skills.update(s.get("name", "").lower() for s in prof.skills_json if isinstance(s, dict))
+
+    is_cs_profile = any(k in degree_str for k in ["computer", "cs", "software", "information technology", "it", "engineering", "data science", "cyber"])
+    if not is_cs_profile:
+        tech_indicators = {"python", "javascript", "typescript", "c++", "java", "sql", "react", "html", "css", "docker", "fastapi", "linux", "git"}
+        if len(cand_skills.intersection(tech_indicators)) >= 2:
+            is_cs_profile = True
 
     # Natural Language / Keyword Search
     parsed_nl = {}
@@ -104,6 +152,40 @@ def get_jobs(
             min_compensation = parsed_nl["min_compensation"]
         if parsed_nl.get("graduation_year") and not graduation_year:
             graduation_year = parsed_nl["graduation_year"]
+
+    # If user has a CS profile and match_profile is enabled, exclude completely irrelevant non-tech roles
+    # (unless the user explicitly typed a query that targets them)
+    has_explicit_non_tech_query = False
+    if q and any(k in q.lower() for k in ["marketing", "sales", "design", "fundraising", "social"]):
+        has_explicit_non_tech_query = True
+
+    if match_profile and is_cs_profile and not has_explicit_non_tech_query:
+        non_tech_filter_terms = [
+            "marketing", "fundraising", "volunteering", "social work", 
+            "graphic design", "video edit", "video editor", "content writer", "copywriter", "copywriting",
+            "telesales", "telecaller", "telefondienst", "cold calling", "insurance agent", 
+            "community buzz", "social media", "reels creation", "youtube manager",
+            "business development", "sales", "account manager", "client advisor", "client success",
+            "customer service", "customer support", "human resources", "hr", "recruitment", 
+            "talent acquisition", "administrative", "operations & marketing", "e-commerce operations", 
+            "head of operations", "law/legal", "legal", "accounting", "chartered accountancy", 
+            "tax", "audit", "investment banker", "investment advisory", "forex", "trading", 
+            "credit risk", "risk analyst", "fashion design", "art director", "mecánico", "automotriz",
+            "business consultant", "solutions consultant", "life sciences", "academic dean",
+            "transport planner", "payment integrity", "strategist", "merchandising"
+        ]
+        tech_exemptions = or_(
+            Job.title.ilike("%software%"),
+            Job.title.ilike("%engineer%"),
+            Job.title.ilike("%developer%"),
+            Job.title.ilike("%programmer%"),
+            Job.title.ilike("%architect%"),
+            Job.title.ilike("%data%"),
+            Job.title.ilike("%devops%"),
+            Job.title.ilike("%python%"),
+        )
+        for term in non_tech_filter_terms:
+            query = query.filter(or_(~Job.title.ilike(f"%{term}%"), tech_exemptions))
 
     # Filter: Company
     if company and company.strip():
@@ -155,18 +237,53 @@ def get_jobs(
         query = query.order_by(asc(Job.deadline).nullslast(), desc(Job.posted_at))
     elif sort_by == "compensation":
         query = query.order_by(desc(Job.compensation_max).nullslast(), desc(Job.posted_at))
-    else: # newest
+    else: # newest or match_score (post-processed)
         query = query.order_by(desc(Job.posted_at).nullslast(), desc(Job.id))
 
     jobs = query.offset(skip).limit(limit).all()
 
-    # Calculate eligibility & saved status
+    # Calculate eligibility, match score & saved status
     from app.services.ai.eligibility import evaluate_eligibility
+    tech_keywords = {"software", "engineer", "developer", "backend", "frontend", "full stack", "fullstack", "data", "cloud", "devops", "systems", "intern", "internship", "ai", "machine learning", "mobile", "ios", "android", "web"}
+
     for job in jobs:
         res = evaluate_eligibility(current_user.id, job.id, db, allow_requirement_extraction=False)
         job.eligible = res["eligible"]
         job.rejection_reason = res["reason"]
         job.is_saved = job.id in saved_job_ids
+
+        # Dynamic match percentage based on candidate resume skills vs job
+        job_title_lower = (job.title or "").lower()
+        job_req_skills = set(s.lower() for s in (job.required_skills_json or []))
+        job_tech_skills = set(s.lower() for s in (job.tech_stack_json or []))
+        all_job_skills = job_req_skills.union(job_tech_skills)
+
+        if not job.eligible:
+            score = 25 if "domain mismatch" in (job.rejection_reason or "").lower() else 45
+        else:
+            base_score = 65
+            title_hits = sum(1 for tk in tech_keywords if tk in job_title_lower)
+            base_score += min(15, title_hits * 5)
+            if all_job_skills and cand_skills:
+                matching = all_job_skills.intersection(cand_skills)
+                ratio = len(matching) / max(len(all_job_skills), 1)
+                base_score += int(ratio * 20)
+            elif is_cs_profile and any(tk in job_title_lower for tk in ["software", "developer", "engineer", "backend", "full stack"]):
+                base_score += 15
+            score = min(98, max(50, base_score))
+
+        job.match_percentage = score
+        if not job.requirements_json:
+            job.requirements_json = {}
+        job.requirements_json["match_score"] = score
+
+    # Filter eligible_only if requested
+    if eligible_only:
+        jobs = [j for j in jobs if j.eligible]
+
+    # Handle sort_by == "match_score"
+    if sort_by == "match_score":
+        jobs.sort(key=lambda j: j.match_percentage or 0, reverse=True)
 
     return jobs
 

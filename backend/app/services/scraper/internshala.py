@@ -30,7 +30,7 @@ def scrape_internshala_jobs(keywords: str = "software development", location: st
             try:
                 page.goto(target_url, wait_until="domcontentloaded", timeout=20000)
             except Exception:
-                page.goto("https://internshala.com/internships/work-from-home-jobs/", wait_until="domcontentloaded", timeout=20000)
+                page.goto("https://internshala.com/internships/matching-computer-science-work-from-home-internships/", wait_until="domcontentloaded", timeout=20000)
             
             # Wait for internship list cards
             try:
@@ -41,6 +41,8 @@ def scrape_internshala_jobs(keywords: str = "software development", location: st
             cards = page.locator(".individual_internship").all()
             logger.info(f"Found {len(cards)} Internshala internship cards.")
             
+            non_tech_terms = {"marketing", "fundraising", "volunteering", "social work", "graphic design", "video editing", "sales", "community buzz", "content writer"}
+
             for card in cards[:15]:
                 try:
                     # Title & Link - try updated selectors with fallback
@@ -52,6 +54,9 @@ def scrape_internshala_jobs(keywords: str = "software development", location: st
                         continue
                         
                     title = title_elem.inner_text().strip()
+                    title_lower = title.lower()
+                    if any(nt in title_lower for nt in non_tech_terms):
+                        continue
                     url = title_elem.get_attribute("href") or ""
                     if url and not url.startswith("http"):
                         url = "https://internshala.com" + url

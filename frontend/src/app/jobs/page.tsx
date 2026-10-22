@@ -57,6 +57,7 @@ interface JobData {
   is_expired: boolean;
   eligible?: boolean;
   rejection_reason?: string | null;
+  match_percentage?: number | null;
   is_saved?: boolean;
   created_at: string;
 }
@@ -83,7 +84,9 @@ export default function JobsPage() {
   const [selectedSkills, setSelectedSkills] = useState("");
   const [showSavedOnly, setShowSavedOnly] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
-  const [sortBy, setSortBy] = useState("newest");
+  const [sortBy, setSortBy] = useState("match_score");
+  const [matchResume, setMatchResume] = useState(true);
+  const [showEligibleOnly, setShowEligibleOnly] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
   // Modals
@@ -124,6 +127,8 @@ export default function JobsPage() {
       if (selectedSkills) params.append("skills", selectedSkills);
       if (showSavedOnly) params.append("saved_only", "true");
       if (showExpired) params.append("exclude_expired", "false");
+      params.append("match_profile", matchResume ? "true" : "false");
+      if (showEligibleOnly) params.append("eligible_only", "true");
       params.append("sort_by", sortBy);
 
       const data = await apiFetch<JobData[]>(`/api/v1/jobs/?${params.toString()}`);
@@ -157,6 +162,8 @@ export default function JobsPage() {
     showSavedOnly,
     showExpired,
     sortBy,
+    matchResume,
+    showEligibleOnly,
   ]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -386,6 +393,36 @@ export default function JobsPage() {
                 <option value="custom_feed">Remote Feeds</option>
               </select>
 
+              {/* Match CS Resume toggle */}
+              <button
+                type="button"
+                onClick={() => setMatchResume(!matchResume)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition shadow-2xs ${
+                  matchResume
+                    ? "bg-indigo-50 border-indigo-200 text-indigo-700 font-semibold"
+                    : "bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
+                }`}
+                title="Filter to roles matching Computer Science & Software Engineering resume"
+              >
+                <Sparkles className={`w-3.5 h-3.5 ${matchResume ? "text-indigo-600 fill-indigo-200" : "text-zinc-400"}`} />
+                Match CS Resume
+              </button>
+
+              {/* Eligible only toggle */}
+              <button
+                type="button"
+                onClick={() => setShowEligibleOnly(!showEligibleOnly)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition shadow-2xs ${
+                  showEligibleOnly
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-700 font-semibold"
+                    : "bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
+                }`}
+                title="Only show jobs where you meet eligibility criteria"
+              >
+                <ShieldCheck className={`w-3.5 h-3.5 ${showEligibleOnly ? "text-emerald-600" : "text-zinc-400"}`} />
+                Eligible Only
+              </button>
+
               {/* Saved only button */}
               <button
                 type="button"
@@ -420,6 +457,7 @@ export default function JobsPage() {
                 onChange={(e) => setSortBy(e.target.value)}
                 className="bg-white border border-zinc-200 rounded-lg px-2.5 py-1.5 text-zinc-700 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-400 shadow-2xs"
               >
+                <option value="match_score">⚡ Best Match (Resume)</option>
                 <option value="newest">Newest First</option>
                 <option value="compensation">Highest Compensation</option>
                 <option value="deadline">Approaching Deadline</option>
@@ -431,6 +469,23 @@ export default function JobsPage() {
 
       {/* Results List */}
       <div className="space-y-4">
+        {matchResume && (
+          <div className="flex items-center justify-between p-3 rounded-xl bg-indigo-50/70 border border-indigo-200/80 text-xs text-indigo-900 shadow-2xs">
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>
+                <strong>Smart Resume Filter Active:</strong> Showing verified Computer Science, Software Engineering & Tech opportunities matching your background. Marketing, sales, and non-technical listings are filtered out.
+              </span>
+            </div>
+            <button
+              onClick={() => setMatchResume(false)}
+              className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 underline ml-3 shrink-0"
+            >
+              Show All Roles
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center justify-between text-xs text-zinc-500 px-1">
           <span>
             Showing <strong className="text-zinc-900 font-semibold">{jobs.length}</strong> opportunities
@@ -475,6 +530,21 @@ export default function JobsPage() {
                       <span className="text-xs font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200 font-medium">
                         #{job.id}
                       </span>
+
+                      {/* Match Score Badge */}
+                      {job.match_percentage !== undefined && job.match_percentage !== null && (
+                        <span
+                          className={`text-xs px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 ${
+                            job.match_percentage >= 80
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
+                              : job.match_percentage >= 60
+                              ? "bg-indigo-50 text-indigo-700 border border-indigo-200/80"
+                              : "bg-zinc-100 text-zinc-600 border border-zinc-200"
+                          }`}
+                        >
+                          ⚡ {job.match_percentage}% Match
+                        </span>
+                      )}
 
                       {/* Source Tag */}
                       <span className="text-[11px] px-2.5 py-0.5 rounded-full font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60 uppercase tracking-wider">

@@ -57,6 +57,11 @@ class InternshalaAdapter(BaseJobSourceAdapter):
                             stipend_elem = card.find("span", class_=lambda c: c and "stipend" in c)
 
                             title = title_elem.get_text(strip=True) if title_elem else "Software Development Intern"
+                            title_lower = title.lower()
+                            non_tech_terms = {"marketing", "fundraising", "volunteering", "social work", "graphic design", "video editing", "sales", "community buzz", "content writer"}
+                            if any(nt in title_lower for nt in non_tech_terms):
+                                continue
+
                             company = comp_elem.get_text(strip=True) if comp_elem else "Internshala Partner"
                             href = title_elem.get("href", "") if title_elem and hasattr(title_elem, "get") else ""
                             if href and not href.startswith("http"):
@@ -69,8 +74,6 @@ class InternshalaAdapter(BaseJobSourceAdapter):
 
                             desc = f"{title} internship at {company}. Location: {loc_text}. Stipend: {stipend_text}. Build practical software features."
                             skills = extract_skills_from_text(f"{title} {desc}")
-                            if not skills:
-                                skills = ["Python", "JavaScript", "HTML/CSS", "SQL"]
                             comp = parse_compensation(stipend_text)
 
                             results.append({
