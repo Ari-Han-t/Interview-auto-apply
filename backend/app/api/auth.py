@@ -71,7 +71,7 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 @router.post("/login", dependencies=[Depends(rate_limit("login", max_requests=15, window_seconds=60))])
-def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not security.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect email or password")
@@ -81,12 +81,15 @@ def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), 
     
     access_token = security.create_access_token(data={"sub": user.email})
     
+    origin = request.headers.get("origin", "")
+    is_cross_origin = origin.startswith("https://") or request.url.scheme == "https"
+    
     response.set_cookie(
         key="access_token",
         value=f"Bearer {access_token}",
         httponly=True,
-        secure=False, # Allow local HTTP dev
-        samesite="lax",
+        secure=True if is_cross_origin else False,
+        samesite="none" if is_cross_origin else "lax",
         max_age=security.settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
     
@@ -97,8 +100,14 @@ def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), 
     }
 
 @router.post("/logout")
-def logout(response: Response):
-    response.delete_cookie("access_token")
+def logout(request: Request, response: Response):
+    origin = request.headers.get("origin", "")
+    is_cross_origin = origin.startswith("https://") or request.url.scheme == "https"
+    response.delete_cookie(
+        "access_token",
+        secure=True if is_cross_origin else False,
+        samesite="none" if is_cross_origin else "lax"
+    )
     return {"message": "Logged out successfully"}
 
 @router.post("/change-password", dependencies=[Depends(rate_limit("change-password", max_requests=10, window_seconds=60))])

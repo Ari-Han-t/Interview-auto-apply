@@ -62,10 +62,17 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   };
 
   const handleLogout = async () => {
-    await fetch(`${API_BASE}/api/v1/auth/logout`, {
-      method: "POST",
-      credentials: "include",
-    });
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("access_token");
+      }
+      await fetch(`${API_BASE}/api/v1/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // Ignore network errors on logout
+    }
     window.location.href = "/login";
   };
 

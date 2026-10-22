@@ -47,6 +47,10 @@ export default function Login() {
       });
 
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.access_token && typeof window !== "undefined") {
+          localStorage.setItem("access_token", data.access_token);
+        }
         window.location.href = "/";
       } else {
         const errorData = await res.json().catch(() => ({ detail: "Login failed" }));

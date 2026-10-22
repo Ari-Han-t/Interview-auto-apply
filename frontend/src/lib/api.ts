@@ -26,12 +26,15 @@ export async function apiFetch<T = any>(
 ): Promise<T> {
   const base = resolveApiBase();
   const url = `${base}${path}`;
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const headers: Record<string, string> = {
+    ...((options.headers as Record<string, string>) || {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
   const res = await fetch(url, {
     credentials: "include",
     ...options,
-    headers: {
-      ...options.headers,
-    },
+    headers,
   });
 
   if (res.status === 401) {
